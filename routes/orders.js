@@ -1,9 +1,21 @@
 const express = require('express');
+const { body } = require('express-validator');
 const pool = require('../config/db');
 const { requireAuth, requirePermission } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
 const { notifyStageEvent } = require('../utils/notify');
 const { GTP_GROUPS, fieldsForStage } = require('../utils/gtpFields');
 const router = express.Router();
+
+const orderFieldRules = [
+  body('customer_name').trim().notEmpty().withMessage('Customer name is required.').isLength({ max: 150 }),
+  body('transformer_type').trim().notEmpty().withMessage('Transformer type is required.'),
+  body('total_quantity').optional({ checkFalsy: true }).isInt({ min: 1 }).withMessage('Total quantity must be a positive number.')
+];
+const lotFieldRules = [
+  body('lot_no').isInt({ min: 1 }).withMessage('Lot No. must be a positive number.'),
+  body('quantity').isInt({ min: 1, max: 1000 }).withMessage('Quantity must be between 1 and 1000 units.')
+];
 
 function parseGtp(body) {
   const gtp = {};
@@ -29,7 +41,9 @@ router.get('/orders/new', requireAuth, requirePermission('can_manage_jobs'), (re
   res.render('orders/form', { title: 'New Order', order: null, gtpGroups: GTP_GROUPS, gtpData: {} });
 });
 
-router.post('/orders', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/orders', requireAuth, requirePermission('can_manage_jobs'),
+  [body('order_no').trim().notEmpty().withMessage('Order No. is required.').isLength({ max: 60 }), ...orderFieldRules],
+  validate, async (req, res) => {
   const { order_no, customer_name, po_no, transformer_type, rating, total_quantity } = req.body;
   try {
     const gtp = parseGtp(req.body);
@@ -56,7 +70,7 @@ router.get('/orders/:id/edit', requireAuth, requirePermission('can_manage_jobs')
   res.render('orders/form', { title: `Edit ${order.order_no}`, order, gtpGroups: GTP_GROUPS, gtpData });
 });
 
-router.post('/orders/:id/edit', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/orders/:id/edit', requireAuth, requirePermission('can_manage_jobs'), orderFieldRules, validate, async (req, res) => {
   const { customer_name, po_no, transformer_type, rating, total_quantity } = req.body;
   try {
     const gtp = parseGtp(req.body);
@@ -110,7 +124,7 @@ router.get('/orders/:id', requireAuth, async (req, res) => {
 });
 
 // ---------------- ADD LOT (auto-creates the unit/job records) ----------------
-router.post('/orders/:id/lots', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/orders/:id/lots', requireAuth, requirePermission('can_manage_jobs'), lotFieldRules, validate, async (req, res) => {
   const orderId = req.params.id;
   const { lot_no, lot_name, quantity, planned_start_date, planned_completion_date } = req.body;
   const qty = Math.max(1, Number(quantity) || 1);

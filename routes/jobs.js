@@ -1,11 +1,19 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const { body } = require('express-validator');
 const pool = require('../config/db');
 const { requireAuth, requirePermission } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
 const { notifyStageEvent } = require('../utils/notify');
 const upload = require('../middleware/upload');
 const router = express.Router();
+
+const jobFieldRules = [
+  body('customer_name').trim().notEmpty().withMessage('Customer name is required.').isLength({ max: 150 }),
+  body('transformer_type').trim().notEmpty().withMessage('Transformer type is required.'),
+  body('target_dispatch_date').optional({ checkFalsy: true }).isISO8601().withMessage('Target dispatch date must be a valid date.')
+];
 
 // LIST
 router.get('/jobs', requireAuth, async (req, res) => {
@@ -30,7 +38,9 @@ router.get('/jobs/new', requireAuth, requirePermission('can_manage_jobs'), async
 });
 
 // CREATE
-router.post('/jobs', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/jobs', requireAuth, requirePermission('can_manage_jobs'),
+  [body('job_no').trim().notEmpty().withMessage('Job No. is required.').isLength({ max: 60 }), ...jobFieldRules],
+  validate, async (req, res) => {
   const { job_no, po_no, customer_name, transformer_type, rating, serial_no, target_dispatch_date } = req.body;
   try {
     const [[firstStage]] = await pool.query('SELECT * FROM stages WHERE is_active=1 ORDER BY sequence_order ASC LIMIT 1');
@@ -63,7 +73,7 @@ router.get('/jobs/:id/edit', requireAuth, requirePermission('can_manage_jobs'), 
 });
 
 // UPDATE
-router.post('/jobs/:id/edit', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/jobs/:id/edit', requireAuth, requirePermission('can_manage_jobs'), jobFieldRules, validate, async (req, res) => {
   const { po_no, customer_name, transformer_type, rating, serial_no } = req.body;
   try {
     await pool.query(

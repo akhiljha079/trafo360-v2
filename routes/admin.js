@@ -1,7 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const { body } = require('express-validator');
 const pool = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
 const whatsapp = require('../utils/whatsapp');
 const router = express.Router();
 
@@ -14,7 +16,12 @@ router.get('/admin/users', requireAuth, adminOnly, async (req, res) => {
   res.render('admin/users', { title: 'Manage Users', users, roles });
 });
 
-router.post('/admin/users', requireAuth, adminOnly, async (req, res) => {
+router.post('/admin/users', requireAuth, adminOnly, [
+  body('name').trim().notEmpty().withMessage('Name is required.').isLength({ max: 120 }),
+  body('email').trim().isEmail().withMessage('A valid email is required.').normalizeEmail(),
+  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters.'),
+  body('role_id').isInt().withMessage('A role must be selected.')
+], validate, async (req, res) => {
   const { name, email, password, role_id, department, phone, whatsapp_number } = req.body;
   try {
     const hash = await bcrypt.hash(password, 10);
@@ -24,7 +31,7 @@ router.post('/admin/users', requireAuth, adminOnly, async (req, res) => {
     );
     req.flash('success', `User ${name} created.`);
   } catch (err) {
-    console.error(err);
+    req.log?.error({ err }, 'user creation failed');
     req.flash('error', 'Could not create user. Email may already be in use.');
   }
   res.redirect('/admin/users');
@@ -36,14 +43,18 @@ router.post('/admin/users/:id/toggle', requireAuth, adminOnly, async (req, res) 
   res.redirect('/admin/users');
 });
 
-router.post('/admin/users/:id/role', requireAuth, adminOnly, async (req, res) => {
+router.post('/admin/users/:id/role', requireAuth, adminOnly, [
+  body('role_id').isInt().withMessage('A role must be selected.')
+], validate, async (req, res) => {
   const { role_id } = req.body;
   await pool.query('UPDATE users SET role_id=? WHERE id=?', [role_id, req.params.id]);
   req.flash('success', 'User role updated.');
   res.redirect('/admin/users');
 });
 
-router.post('/admin/users/:id/reset-password', requireAuth, adminOnly, async (req, res) => {
+router.post('/admin/users/:id/reset-password', requireAuth, adminOnly, [
+  body('new_password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters.')
+], validate, async (req, res) => {
   const { new_password } = req.body;
   const hash = await bcrypt.hash(new_password, 10);
   await pool.query('UPDATE users SET password_hash=?, must_change_password=1 WHERE id=?', [hash, req.params.id]);

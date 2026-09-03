@@ -25,6 +25,9 @@ async function attachUser(req, res, next) {
   res.locals.currentUser = req.session.user || null;
   res.locals.appName = await getAppName();
   res.locals.poweredBy = 'Vayrone Infratech';
+  // req.csrfToken is attached by the doubleCsrfProtection middleware, which
+  // must run before this one (see server.js) for every request, including GETs.
+  res.locals.csrfToken = typeof req.csrfToken === 'function' ? req.csrfToken() : '';
   next();
 }
 

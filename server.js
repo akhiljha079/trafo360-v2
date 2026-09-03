@@ -6,25 +6,80 @@
 // =====================================================================
 require('dotenv').config();
 const express = require('express');
+require('express-async-errors'); // patches Router - must load before routes are required below
 const path = require('path');
 const session = require('express-session');
+const MySQLStore = require('express-mysql-session')(session);
 const flash = require('connect-flash');
 const cookieParser = require('cookie-parser');
 const methodOverride = require('method-override');
 const expressLayouts = require('express-ejs-layouts');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const pinoHttp = require('pino-http');
 
+const logger = require('./config/logger');
 const { attachUser } = require('./middleware/auth');
+const { doubleCsrfProtection, invalidCsrfTokenError } = require('./config/csrf');
+const { safeBack } = require('./utils/safeRedirect');
 const { startScheduler } = require('./cron/scheduler');
 const whatsapp = require('./utils/whatsapp');
 const pool = require('./config/db');
 
 const app = express();
+const isProd = process.env.NODE_ENV === 'production';
+
+// Trust the reverse proxy (aaPanel/nginx) for correct req.ip / req.secure
+// behind SSL termination - needed for rate limiting and secure cookies.
+app.set('trust proxy', 1);
+
+app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/healthz' } }));
 
 // View engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(expressLayouts);
 app.set('layout', 'partials/layout');
+
+// Security headers. CSP is intentionally permissive on 'unsafe-inline' for
+// script/style: the app's views use inline <script> blocks and inline style
+// attributes throughout (signature pads, chart init, etc). Tightening this to
+// a nonce/hash-based policy is a good follow-up but requires touching every
+// view - out of scope for this hardening pass. The CDN allowlist below is
+// exactly (and only) what the app actually loads today.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://cdn.jsdelivr.net', 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'self'"]
+    }
+  }
+}));
+
+app.get('/healthz', (req, res) => res.status(200).json({ status: 'ok' }));
+
+// Rate limiting: a generous global ceiling (defense in depth) plus a strict
+// one on login specifically, since that's the credential-guessing target.
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false
+}));
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many login attempts. Please wait a few minutes and try again.'
+});
 
 // Core middleware
 app.use(express.urlencoded({ extended: true }));
@@ -33,13 +88,17 @@ app.use(cookieParser());
 app.use(methodOverride('_method'));
 app.use(express.static(path.join(__dirname, 'public')));
 
+const sessionStore = new MySQLStore({}, pool);
 app.use(session({
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'change_this_secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 8 * 60 * 60 * 1000 } // 8 hours
+  cookie: { maxAge: 8 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax', secure: isProd } // 8 hours
 }));
 app.use(flash());
+
+app.use(doubleCsrfProtection);
 app.use(attachUser);
 
 app.use((req, res, next) => {
@@ -49,6 +108,7 @@ app.use((req, res, next) => {
 });
 
 // Routes
+app.post('/login', loginLimiter);
 app.use(require('./routes/auth'));
 app.use(require('./routes/dashboard'));
 app.use(require('./routes/jobs'));
@@ -66,24 +126,40 @@ app.use((req, res) => res.status(404).render('404', { title: 'Not Found', layout
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error(err);
-  req.flash('error', 'An unexpected error occurred.');
-  res.redirect('back');
-});
+  // A response may already be fully sent by the time an error surfaces here
+  // (e.g. a session-store write that fails asynchronously after a redirect
+  // already went out) - nothing more can be done for that request.
+  if (res.headersSent) return next(err);
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-  console.log(`TRAFO 360 (Trafo Power & Electricals - Workflow & DMS) running on port ${PORT}`);
-  startScheduler();
-
-  // Resume the WhatsApp Web session automatically on restart if it was
-  // previously enabled - fully optional, never blocks server startup.
-  try {
-    const enabled = await whatsapp.isEnabledInSettings();
-    if (enabled) {
-      whatsapp.initWhatsApp().catch(err => console.error('[whatsapp] init error:', err.message));
-    }
-  } catch (err) {
-    console.error('[whatsapp] Could not check WhatsApp setting on boot:', err.message);
+  if (err === invalidCsrfTokenError || err?.code === 'EBADCSRFTOKEN') {
+    req.log?.warn({ err }, 'CSRF validation failed');
+    req.flash('error', 'Your session expired or the form was resubmitted. Please try again.');
+    return res.redirect(safeBack(req));
   }
+  (req.log || logger).error({ err }, 'Unhandled request error');
+  req.flash('error', 'An unexpected error occurred.');
+  res.redirect(safeBack(req));
 });
+
+// Only bind a real port when this file is run directly (`node server.js`) -
+// not when required as a module (e.g. by the test suite via supertest).
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, async () => {
+    logger.info(`TRAFO 360 (Trafo Power & Electricals - Workflow & DMS) running on port ${PORT}`);
+    startScheduler();
+
+    // Resume the WhatsApp Web session automatically on restart if it was
+    // previously enabled - fully optional, never blocks server startup.
+    try {
+      const enabled = await whatsapp.isEnabledInSettings();
+      if (enabled) {
+        whatsapp.initWhatsApp().catch(err => logger.error({ err }, '[whatsapp] init error'));
+      }
+    } catch (err) {
+      logger.error({ err }, '[whatsapp] Could not check WhatsApp setting on boot');
+    }
+  });
+}
+
+module.exports = app;

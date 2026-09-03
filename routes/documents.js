@@ -3,10 +3,18 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
+const { body } = require('express-validator');
 const pool = require('../config/db');
 const { requireAuth, requirePermission } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
 const upload = require('../middleware/upload');
 const router = express.Router();
+
+const CONFIDENTIALITY_LEVELS = ['Public', 'Internal', 'Confidential', 'Highly Confidential'];
+const docFieldRules = [
+  body('doc_name').trim().notEmpty().withMessage('Document name is required.').isLength({ max: 200 }),
+  body('confidentiality').isIn(CONFIDENTIALITY_LEVELS).withMessage('Invalid confidentiality level.')
+];
 
 function canSeeDocument(user, doc) {
   if (user.can_view_confidential || user.can_manage_documents) return true;
@@ -40,7 +48,9 @@ router.get('/documents/new', requireAuth, requirePermission('can_manage_document
 });
 
 // CREATE
-router.post('/documents', requireAuth, requirePermission('can_manage_documents'), upload.single('file'), async (req, res) => {
+router.post('/documents', requireAuth, requirePermission('can_manage_documents'), upload.single('file'),
+  [body('doc_code').trim().notEmpty().withMessage('Document Code is required.').isLength({ max: 60 }), ...docFieldRules],
+  validate, async (req, res) => {
   const { doc_code, doc_name, category_id, confidentiality, related_job_id, storage_location } = req.body;
   try {
     const filePath = req.file ? `/uploads/${req.file.filename}` : null;
@@ -69,7 +79,7 @@ router.get('/documents/:id/edit', requireAuth, requirePermission('can_manage_doc
 });
 
 // UPDATE metadata (and optionally replace the uploaded file)
-router.post('/documents/:id/edit', requireAuth, requirePermission('can_manage_documents'), upload.single('file'), async (req, res) => {
+router.post('/documents/:id/edit', requireAuth, requirePermission('can_manage_documents'), upload.single('file'), docFieldRules, validate, async (req, res) => {
   const { doc_name, category_id, confidentiality, related_job_id, storage_location } = req.body;
   try {
     if (req.file) {

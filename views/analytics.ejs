@@ -47,7 +47,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
-  const analyticsData = <%- JSON.stringify(data) %>;
+  const analyticsData = <%- JSON.stringify(data).replace(/</g, '\\u003c') %>;
   const brandColors = ['#1F4E78','#2E75B6','#C0392B','#1E8449','#FFC107','#8E44AD','#16A085','#D35400'];
 
   // 1) Jobs by phase & status (grouped bar)
