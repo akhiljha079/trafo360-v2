@@ -5,6 +5,8 @@ node_modules/
 .DS_Store
 uploads/*
 !uploads/.gitkeep
+public/branding/*
+!public/branding/.gitkeep
 npm-debug.log
 .wwebjs_auth/
 .wwebjs_cache/

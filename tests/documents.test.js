@@ -48,16 +48,50 @@ test('full document issue -> approval flow requires a signature', async () => {
   expect(doc.qr_token).toBeTruthy();
 });
 
-test('rejects an upload with a disallowed file extension', async () => {
+test('uploads an allowed file type successfully with a valid CSRF token', async () => {
+  // Exercises the actual multipart + file + CSRF interaction end-to-end
+  // (multer runs before CSRF validation for this route - see config/csrf.js
+  // and the app.post(...) interceptors in server.js) - not just the
+  // metadata-only path the other tests use.
   const agent = await loginAsAdmin(app);
+  const docCode = `TEST-UPLOAD-${Date.now()}`;
   const token = await freshToken(agent, '/documents/new');
   const res = await agent
     .post('/documents')
-    .field('doc_code', `TEST-BAD-${Date.now()}`)
+    .field('doc_code', docCode)
+    .field('doc_name', 'Legitimate PDF')
+    .field('confidentiality', 'Internal')
+    .field('_csrf', token)
+    .attach('file', Buffer.from('%PDF-1.4 test'), 'report.pdf');
+
+  expect(res.status).toBe(302);
+  expect(res.headers.location).toMatch(/^\/documents\/\d+$/);
+  const [[doc]] = await pool.query('SELECT * FROM documents WHERE doc_code=?', [docCode]);
+  expect(doc).toBeTruthy();
+  expect(doc.file_path).toMatch(/\.pdf$/);
+});
+
+test('rejects an upload with a disallowed file extension, and a missing/wrong CSRF token independently of that', async () => {
+  const agent = await loginAsAdmin(app);
+  const badExtCode = `TEST-BADEXT-${Date.now()}`;
+  let token = await freshToken(agent, '/documents/new');
+  await agent
+    .post('/documents')
+    .field('doc_code', badExtCode)
     .field('doc_name', 'Suspicious file')
     .field('confidentiality', 'Internal')
     .field('_csrf', token)
     .attach('file', Buffer.from('#!/bin/sh\necho hi'), 'payload.sh');
-  // multer's fileFilter rejects it -> falls through to the global error handler (redirect, not a crash)
-  expect(res.status).toBe(302);
+  const [[rejectedByFilter]] = await pool.query('SELECT * FROM documents WHERE doc_code=?', [badExtCode]);
+  expect(rejectedByFilter).toBeUndefined();
+
+  const noCsrfCode = `TEST-NOCSRF-${Date.now()}`;
+  await agent
+    .post('/documents')
+    .field('doc_code', noCsrfCode)
+    .field('doc_name', 'No token')
+    .field('confidentiality', 'Internal')
+    .attach('file', Buffer.from('%PDF-1.4 test'), 'report.pdf'); // no _csrf field at all
+  const [[rejectedByCsrf]] = await pool.query('SELECT * FROM documents WHERE doc_code=?', [noCsrfCode]);
+  expect(rejectedByCsrf).toBeUndefined();
 });

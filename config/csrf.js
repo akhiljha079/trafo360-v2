@@ -16,6 +16,16 @@ const { doubleCsrfProtection, invalidCsrfTokenError } = doubleCsrf({
     path: '/'
   },
   getCsrfTokenFromRequest: (req) => (req.body && req.body._csrf) || req.headers['x-csrf-token']
+  // NOTE: express.urlencoded()/express.json() (applied globally, ahead of
+  // this middleware) don't parse multipart/form-data bodies, so a file-
+  // upload form's _csrf field wouldn't normally be visible here yet. Rather
+  // than skip validation for multipart requests (which would have to be
+  // content-type-based and so would blanket-skip CSRF for ANY route an
+  // attacker sends as multipart, not just the legitimate upload ones -
+  // a real hole, caught here before shipping), server.js instead runs
+  // multer for the handful of upload routes BEFORE this middleware, so
+  // req.body._csrf is already populated by the time this single pass runs -
+  // no skip logic needed, every route validates the same way.
 });
 
 module.exports = { doubleCsrfProtection, invalidCsrfTokenError };

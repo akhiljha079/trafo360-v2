@@ -8,6 +8,8 @@ npm-debug.log
 .wwebjs_cache
 uploads/*
 !uploads/.gitkeep
+public/branding/*
+!public/branding/.gitkeep
 tests
 coverage
 *.md

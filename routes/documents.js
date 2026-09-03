@@ -7,7 +7,6 @@ const { body } = require('express-validator');
 const pool = require('../config/db');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
-const upload = require('../middleware/upload');
 const { canSeeDocument } = require('../utils/documentAccess');
 const router = express.Router();
 
@@ -43,7 +42,9 @@ router.get('/documents/new', requireAuth, requirePermission('can_manage_document
 });
 
 // CREATE
-router.post('/documents', requireAuth, requirePermission('can_manage_documents'), upload.single('file'),
+// NOTE: file upload (upload.single('file')) for this route runs early in
+// server.js, before CSRF validation - see the comment in config/csrf.js.
+router.post('/documents', requireAuth, requirePermission('can_manage_documents'),
   [body('doc_code').trim().notEmpty().withMessage('Document Code is required.').isLength({ max: 60 }), ...docFieldRules],
   validate, async (req, res) => {
   const { doc_code, doc_name, category_id, confidentiality, related_job_id, storage_location } = req.body;
@@ -74,7 +75,8 @@ router.get('/documents/:id/edit', requireAuth, requirePermission('can_manage_doc
 });
 
 // UPDATE metadata (and optionally replace the uploaded file)
-router.post('/documents/:id/edit', requireAuth, requirePermission('can_manage_documents'), upload.single('file'), docFieldRules, validate, async (req, res) => {
+// NOTE: file upload for this route also runs early in server.js - see above.
+router.post('/documents/:id/edit', requireAuth, requirePermission('can_manage_documents'), docFieldRules, validate, async (req, res) => {
   const { doc_name, category_id, confidentiality, related_job_id, storage_location } = req.body;
   try {
     if (req.file) {

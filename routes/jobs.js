@@ -10,7 +10,6 @@ const { getActiveTransformerTypes } = require('../utils/gtpSchema');
 const { DOCUMENT_TYPES } = require('../utils/documentTypes');
 const { generateDocument } = require('../utils/documentGenerator');
 const { computeRag, computeProgressPct } = require('../utils/jobStatus');
-const upload = require('../middleware/upload');
 const router = express.Router();
 
 const jobFieldRules = [
@@ -175,7 +174,9 @@ router.post('/jobs/:id/generate-document', requireAuth, requirePermission('can_m
 });
 
 // UPLOAD a required (or ad-hoc) document for the job's CURRENT stage
-router.post('/jobs/:id/stage-documents', requireAuth, upload.single('file'), async (req, res) => {
+// NOTE: file upload for this route runs early in server.js, before CSRF
+// validation - see the comment in config/csrf.js.
+router.post('/jobs/:id/stage-documents', requireAuth, async (req, res) => {
   const { requirement_id, remarks } = req.body;
   const jobId = req.params.id;
   try {

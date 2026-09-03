@@ -43,11 +43,14 @@ async function getSetting(key, fallback) {
 }
 
 // Puppeteer's page.setContent() has no base URL to resolve a relative
-// /uploads/... path against, so the logo is inlined as a data URI instead.
+// /branding/... path against, so the logo is inlined as a data URI instead.
+// company_logo_path is stored as the public URL path (e.g. /branding/foo.png,
+// served by express.static from public/) - resolve it against public/, not
+// the project root.
 function readLogoDataUri(logoPath) {
   if (!logoPath) return null;
   try {
-    const abs = path.join(__dirname, '..', logoPath.replace(/^\/+/, ''));
+    const abs = path.join(__dirname, '..', 'public', logoPath.replace(/^\/+/, ''));
     const ext = path.extname(abs).slice(1).toLowerCase() || 'png';
     const mime = ext === 'jpg' ? 'jpeg' : ext;
     return `data:image/${mime};base64,${fs.readFileSync(abs).toString('base64')}`;

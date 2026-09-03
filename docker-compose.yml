@@ -42,9 +42,11 @@ services:
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
     volumes:
       - uploads_data:/app/uploads
+      - branding_data:/app/public/branding
     ports:
       - "${PORT:-3000}:3000"
 
 volumes:
   db_data:
   uploads_data:
+  branding_data:

@@ -19,7 +19,9 @@ const rateLimit = require('express-rate-limit');
 const pinoHttp = require('pino-http');
 
 const logger = require('./config/logger');
-const { attachUser } = require('./middleware/auth');
+const { attachUser, requireAuth } = require('./middleware/auth');
+const upload = require('./middleware/upload');
+const uploadLogo = require('./middleware/uploadLogo');
 const { doubleCsrfProtection, invalidCsrfTokenError } = require('./config/csrf');
 const { safeBack } = require('./utils/safeRedirect');
 const { startScheduler } = require('./cron/scheduler');
@@ -106,6 +108,19 @@ app.use(session({
   cookie: { maxAge: 8 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax', secure: isProd } // 8 hours
 }));
 app.use(flash());
+
+// The 4 routes that accept file uploads need multer to run BEFORE CSRF
+// validation below - express.urlencoded()/express.json() (above) don't
+// parse multipart/form-data, so the _csrf field wouldn't be visible yet
+// otherwise. Each is gated by requireAuth here too, since without it an
+// unauthenticated request could still trigger a file write to disk before
+// the route's own auth/permission check further down the chain ever runs.
+// See config/csrf.js for the fuller explanation (including the blanket-skip
+// approach that was tried and rejected as an actual CSRF bypass).
+app.post('/documents', requireAuth, upload.single('file'));
+app.post('/documents/:id/edit', requireAuth, upload.single('file'));
+app.post('/jobs/:id/stage-documents', requireAuth, upload.single('file'));
+app.post('/admin/settings', requireAuth, uploadLogo.single('logo'));
 
 app.use(doubleCsrfProtection);
 app.use(attachUser);

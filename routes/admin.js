@@ -5,7 +5,6 @@ const pool = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const whatsapp = require('../utils/whatsapp');
-const upload = require('../middleware/upload');
 const router = express.Router();
 
 const adminOnly = requireRole('Admin');
@@ -279,9 +278,11 @@ router.get('/admin/settings', requireAuth, adminOnly, async (req, res) => {
   res.render('admin/settings', { title: 'System Settings', settings });
 });
 
-router.post('/admin/settings', requireAuth, adminOnly, upload.single('logo'), async (req, res) => {
+// NOTE: file upload (the logo) for this route runs early in server.js,
+// before CSRF validation - see the comment in config/csrf.js.
+router.post('/admin/settings', requireAuth, adminOnly, async (req, res) => {
   const entries = Object.entries(req.body).filter(([key]) => key !== '_csrf');
-  if (req.file) entries.push(['company_logo_path', `/uploads/${req.file.filename}`]);
+  if (req.file) entries.push(['company_logo_path', `/branding/${req.file.filename}`]);
   for (const [key, value] of entries) {
     await pool.query(
       `INSERT INTO system_settings (setting_key, setting_value) VALUES (?,?)
