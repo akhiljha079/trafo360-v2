@@ -1,4 +1,4 @@
-<div class="d-flex justify-content-between align-items-start mb-3">
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
   <div>
     <% if (job.order_no) { %>
       <div class="small mb-1"><a href="/orders/<%= job.order_id %>" class="text-decoration-none">&larr; <%= job.order_no %></a> / <%= job.lot_name %> / Unit #<%= job.unit_no %></div>
@@ -6,22 +6,26 @@
     <h4 class="mb-0"><%= job.job_no %> &mdash; <%= job.customer_name %></h4>
     <div class="text-muted small"><%= job.transformer_type %> &middot; <%= job.rating || 'N/A' %> &middot; Serial: <%= job.serial_no || 'N/A' %> &middot; PO: <%= job.po_no || 'N/A' %></div>
     <div class="mt-2">
+      <span class="badge badge-rag-<%= rag %>"><%= ragLabel %></span>
+      <span class="badge bg-secondary"><%= job.status %></span>
+    </div>
+    <div class="mt-2">
       <form action="/jobs/<%= job.id %>/target-date" method="POST" class="d-flex align-items-center gap-2">
         <label class="small text-muted mb-0">Target Dispatch Date:</label>
         <input type="date" name="target_dispatch_date" class="form-control form-control-sm" style="width:160px;" value="<%= job.target_dispatch_date || '' %>" <%= currentUser.can_manage_jobs ? '' : 'disabled' %>>
         <% if (currentUser.can_manage_jobs) { %><button class="btn btn-sm btn-outline-secondary" type="submit">Save</button><% } %>
       </form>
     </div>
-  </div>
-  <div class="text-end">
-    <span class="badge bg-secondary fs-6 mb-2"><%= job.status %></span><br>
     <% if (currentUser.can_manage_jobs) { %>
-      <a href="/jobs/<%= job.id %>/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i> Edit</a>
-      <form action="/jobs/<%= job.id %>/delete" method="POST" class="d-inline" onsubmit="return confirm('Delete this job? Stage history is preserved for audit but the job will be archived.')">
-        <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i> Delete</button>
-      </form>
+      <div class="mt-2">
+        <a href="/jobs/<%= job.id %>/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i> Edit</a>
+        <form action="/jobs/<%= job.id %>/delete" method="POST" class="d-inline" onsubmit="return confirm('Delete this job? Stage history is preserved for audit but the job will be archived.')">
+          <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i> Delete</button>
+        </form>
+      </div>
     <% } %>
   </div>
+  <%- include('../partials/transformer-status', { pct: progressPct, phase: job.phase, rag: rag, size: 'lg', caption: progressPct + '% built' }) %>
 </div>
 
 <div class="card mb-3">

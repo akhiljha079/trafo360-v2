@@ -52,10 +52,11 @@
       <div class="card-header">Recently Updated Jobs</div>
       <div class="table-responsive">
         <table class="table table-sm mb-0">
-          <thead><tr><th>Job No.</th><th>Customer</th><th>Type</th><th>Stage</th><th></th></tr></thead>
+          <thead><tr><th>Build</th><th>Job No.</th><th>Customer</th><th>Type</th><th>Stage</th><th></th></tr></thead>
           <tbody>
           <% recentJobs.forEach(function(j) { %>
             <tr>
+              <td><%- include('partials/transformer-status', { pct: j.progressPct, phase: j.phase, rag: j.rag, size: 'sm' }) %></td>
               <td><%= j.job_no %></td>
               <td><%= j.customer_name %></td>
               <td><%= j.transformer_type %></td>

@@ -43,7 +43,7 @@
     <table class="table table-hover mb-0 align-middle">
       <thead>
         <tr>
-          <th>Job No.</th><th>Customer</th><th>Type</th><th>Current Stage</th>
+          <th>Job No.</th><th>Customer</th><th>Type</th><th>Current Stage</th><th>Build</th>
           <th style="width:160px;">Progress</th><th>Days in Stage</th><th>Target Dispatch</th><th>Status</th><th></th>
         </tr>
       </thead>
@@ -54,6 +54,7 @@
           <td><%= r.customer_name %></td>
           <td class="small"><%= r.transformer_type %></td>
           <td><% if (r.stage_name) { %><span class="badge badge-phase-<%= r.phase %>"><%= r.stage_code %></span> <span class="small"><%= r.stage_name %></span><% } else { %>-<% } %></td>
+          <td><%- include('partials/transformer-status', { pct: r.progressPct, phase: r.phase, rag: r.rag, size: 'sm' }) %></td>
           <td>
             <div class="progress-track"><div class="progress-fill" style="width:<%= r.progressPct %>%;"></div></div>
             <div class="small text-muted"><%= r.progressPct %>%</div>

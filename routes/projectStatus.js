@@ -1,30 +1,8 @@
 const express = require('express');
 const pool = require('../config/db');
 const { requireAuth } = require('../middleware/auth');
+const { computeRag, computeProgressPct } = require('../utils/jobStatus');
 const router = express.Router();
-
-// Computes a RAG (Red/Amber/Green) status for a job based on its target
-// dispatch date and current job status. Also flags jobs "stalled" in their
-// current stage beyond a reasonable threshold, independent of the target date.
-function computeRag(job, daysInStage) {
-  if (job.status === 'Completed') return { rag: 'green', label: 'Completed' };
-  if (job.status === 'Cancelled') return { rag: 'gray', label: 'Cancelled' };
-  if (job.status === 'On Hold') return { rag: 'gray', label: 'On Hold' };
-
-  if (!job.target_dispatch_date) {
-    return { rag: 'gray', label: 'No Target Set' };
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(job.target_dispatch_date);
-  target.setHours(0, 0, 0, 0);
-  const daysToTarget = Math.round((target - today) / (1000 * 60 * 60 * 24));
-
-  if (daysToTarget < 0) return { rag: 'red', label: `Delayed ${Math.abs(daysToTarget)}d` };
-  if (daysToTarget <= 7) return { rag: 'amber', label: `Due in ${daysToTarget}d` };
-  return { rag: 'green', label: 'On Track' };
-}
 
 router.get('/project-status', requireAuth, async (req, res) => {
   const [totalStagesRow] = await pool.query(`SELECT COUNT(*) AS cnt FROM stages WHERE is_active=1`);
@@ -52,15 +30,13 @@ router.get('/project-status', requireAuth, async (req, res) => {
   stageStarts.forEach(r => { stageStartMap[`${r.job_id}-${r.stage_id}`] = r.action_at; });
 
   const rows = jobs.map(job => {
-    const progressPct = job.sequence_order
-      ? Math.min(100, Math.round((job.sequence_order / totalStages) * 100))
-      : 0;
+    const progressPct = computeProgressPct(job.sequence_order, totalStages);
     const startedAt = stageStartMap[`${job.id}-${job.current_stage_id}`];
     const daysInStage = startedAt
       ? Math.round((new Date() - new Date(startedAt)) / (1000 * 60 * 60 * 24))
       : null;
     const stalled = daysInStage !== null && daysInStage >= 10 && job.status === 'Active';
-    const { rag, label } = computeRag(job, daysInStage);
+    const { rag, label } = computeRag(job);
     return { ...job, progressPct, daysInStage, stalled, rag, ragLabel: label };
   });
 

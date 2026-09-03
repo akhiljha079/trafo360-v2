@@ -1,0 +1,110 @@
+<%
+/* Reusable transformer-build visualization. Locals:
+   pct   - 0-100 overall progress (drives which parts have "appeared")
+   phase - 'Sales' | 'Manufacturing' | 'Dispatch' | undefined
+   rag   - 'green' | 'amber' | 'red' | 'gray' (drives the status glow ring)
+   size  - 'sm' | 'md' | 'lg' (default 'md')
+   caption - optional small label under the illustration
+*/
+var tfPct = typeof pct !== 'undefined' && pct !== null ? pct : 0;
+var tfPhase = typeof phase !== 'undefined' ? phase : null;
+var tfRag = typeof rag !== 'undefined' && rag ? rag : 'gray';
+var tfSize = typeof size !== 'undefined' ? size : 'md';
+var tfCaption = typeof caption !== 'undefined' ? caption : null;
+
+// Build thresholds - each part of the transformer "appears" once progress
+// crosses its threshold, mirroring the real manufacturing sequence.
+var showCore     = tfPct >= 10;
+var showWinding  = tfPct >= 22;
+var showTank     = tfPct >= 42;   // once the tank appears it visually covers the core/winding (drawn behind it)
+var showFittings = tfPct >= 58;   // radiators, conservator, tap changer
+var showBushings = tfPct >= 70;
+var showOil      = tfPct >= 82;
+var showDispatch = tfPhase === 'Dispatch' || tfPct >= 96;
+var isComplete   = tfPct >= 100;
+
+// Which layer is "actively being built" right now, for the pulse animation.
+var currentLayer = 'core';
+if (showCore && !showWinding) currentLayer = 'core';
+else if (showWinding && !showTank) currentLayer = 'winding';
+else if (showTank && !showFittings) currentLayer = 'tank';
+else if (showFittings && !showBushings) currentLayer = 'fittings';
+else if (showBushings && !showOil) currentLayer = 'bushings';
+else if (showOil && !showDispatch) currentLayer = 'oil';
+else if (showDispatch && !isComplete) currentLayer = 'dispatch';
+else currentLayer = 'none';
+%>
+<div class="tf-status tf-status-<%= tfSize %> tf-rag-<%= tfRag %>">
+  <svg viewBox="0 0 280 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Transformer build progress: <%= tfPct %>%">
+    <!-- blueprint baseline (always visible, very dim) -->
+    <g class="tf-blueprint" opacity="0.35">
+      <rect x="70" y="90" width="140" height="95" rx="10" fill="none" stroke="#B7C1CC" stroke-width="1.5" stroke-dasharray="3 4"/>
+    </g>
+
+    <!-- core + windings: only visible pre-tanking, drawn behind the tank -->
+    <g class="tf-part tf-core <%= currentLayer==='core' ? 'tf-pulse' : '' %>" style="opacity: <%= showCore && !showTank ? 1 : (showCore ? 0 : 0) %>;">
+      <rect x="118" y="110" width="44" height="65" rx="4" fill="#B7C1CC"/>
+    </g>
+    <g class="tf-part tf-winding <%= currentLayer==='winding' ? 'tf-pulse' : '' %>" style="opacity: <%= showWinding && !showTank ? 1 : 0 %>;">
+      <rect x="108" y="118" width="20" height="50" rx="8" fill="none" stroke="var(--tp-amber)" stroke-width="4"/>
+      <rect x="152" y="118" width="20" height="50" rx="8" fill="none" stroke="var(--tp-amber)" stroke-width="4"/>
+    </g>
+
+    <!-- base skid -->
+    <g class="tf-part tf-base" style="opacity: <%= showTank ? 1 : 0 %>;">
+      <rect x="55" y="192" width="170" height="8" rx="3" fill="#8792A0"/>
+      <circle cx="78" cy="204" r="6" fill="#5C6774"/>
+      <circle cx="202" cy="204" r="6" fill="#5C6774"/>
+    </g>
+
+    <!-- tap changer (side box) -->
+    <g class="tf-part tf-fitting <%= currentLayer==='fittings' ? 'tf-pulse' : '' %>" style="opacity: <%= showFittings ? 1 : 0 %>;">
+      <rect x="48" y="115" width="18" height="42" rx="3" fill="var(--tp-navy)"/>
+    </g>
+
+    <!-- conservator + connecting pipe -->
+    <g class="tf-part tf-fitting <%= currentLayer==='fittings' ? 'tf-pulse' : '' %>" style="opacity: <%= showFittings ? 1 : 0 %>;">
+      <rect x="60" y="52" width="55" height="22" rx="11" fill="var(--tp-blue)"/>
+      <rect x="83" y="74" width="6" height="18" fill="var(--tp-blue)"/>
+    </g>
+
+    <!-- radiators -->
+    <g class="tf-part tf-fitting <%= currentLayer==='fittings' ? 'tf-pulse' : '' %>" style="opacity: <%= showFittings ? 1 : 0 %>;">
+      <% [0,1,2,3].forEach(function(i) { %>
+        <rect x="<%= 216 + i*9 %>" y="102" width="6" height="78" rx="3" fill="#AEB9C4"/>
+      <% }); %>
+    </g>
+
+    <!-- main tank -->
+    <g class="tf-part tf-tank <%= currentLayer==='tank' ? 'tf-pulse' : '' %>" style="opacity: <%= showTank ? 1 : 0 %>;">
+      <rect x="70" y="90" width="140" height="95" rx="10" fill="var(--tp-navy)"/>
+      <rect x="70" y="90" width="140" height="18" rx="9" fill="var(--tp-navy-deep)"/>
+      <!-- rating plate -->
+      <rect x="84" y="150" width="34" height="20" rx="2" fill="rgba(255,255,255,0.14)"/>
+      <!-- oil sight-glass -->
+      <rect x="128" y="145" width="10" height="30" rx="2" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>
+      <rect x="129" y="<%= showOil ? 149 : 174 %>" width="8" height="<%= showOil ? 25 : 0 %>" fill="#3FA9F5" class="tf-oil-fill <%= currentLayer==='oil' ? 'tf-pulse' : '' %>"/>
+    </g>
+
+    <!-- bushings -->
+    <g class="tf-part tf-fitting <%= currentLayer==='bushings' ? 'tf-pulse' : '' %>" style="opacity: <%= showBushings ? 1 : 0 %>;">
+      <!-- HV -->
+      <rect x="103" y="42" width="12" height="48" rx="5" fill="#D8DEE9"/>
+      <% [0,1,2,3].forEach(function(i) { %><ellipse cx="109" cy="<%= 48 + i*10 %>" rx="9" ry="3" fill="#EDF1F6"/><% }); %>
+      <!-- LV -->
+      <rect x="163" y="58" width="10" height="32" rx="4" fill="#D8DEE9"/>
+      <% [0,1,2].forEach(function(i) { %><ellipse cx="168" cy="<%= 63 + i*9 %>" rx="7.5" ry="2.6" fill="#EDF1F6"/><% }); %>
+    </g>
+
+    <!-- dispatch packing straps + ready badge -->
+    <g class="tf-part tf-dispatch <%= currentLayer==='dispatch' ? 'tf-pulse' : '' %>" style="opacity: <%= showDispatch ? 1 : 0 %>;">
+      <line x1="70" y1="105" x2="210" y2="170" stroke="var(--tp-amber)" stroke-width="3" stroke-dasharray="6 5"/>
+      <line x1="210" y1="105" x2="70" y2="170" stroke="var(--tp-amber)" stroke-width="3" stroke-dasharray="6 5"/>
+    </g>
+    <g class="tf-part tf-badge" style="opacity: <%= isComplete ? 1 : 0 %>;">
+      <circle cx="222" cy="70" r="16" fill="var(--tp-success)"/>
+      <path d="M215 70 l5 5 l10 -11" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </svg>
+  <% if (tfCaption) { %><div class="tf-caption"><%= tfCaption %></div><% } %>
+</div>

@@ -8,6 +8,7 @@ const pool = require('../config/db');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const upload = require('../middleware/upload');
+const { canSeeDocument } = require('../utils/documentAccess');
 const router = express.Router();
 
 const CONFIDENTIALITY_LEVELS = ['Public', 'Internal', 'Confidential', 'Highly Confidential'];
@@ -15,12 +16,6 @@ const docFieldRules = [
   body('doc_name').trim().notEmpty().withMessage('Document name is required.').isLength({ max: 200 }),
   body('confidentiality').isIn(CONFIDENTIALITY_LEVELS).withMessage('Invalid confidentiality level.')
 ];
-
-function canSeeDocument(user, doc) {
-  if (user.can_view_confidential || user.can_manage_documents) return true;
-  if (doc.confidentiality === 'Public' || doc.confidentiality === 'Internal') return true;
-  return doc.uploaded_by === user.id;
-}
 
 // LIST / CATALOGUE
 router.get('/documents', requireAuth, async (req, res) => {

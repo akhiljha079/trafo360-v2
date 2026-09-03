@@ -9,6 +9,7 @@ const { notifyStageEvent } = require('../utils/notify');
 const { getActiveTransformerTypes } = require('../utils/gtpSchema');
 const { DOCUMENT_TYPES } = require('../utils/documentTypes');
 const { generateDocument } = require('../utils/documentGenerator');
+const { computeRag, computeProgressPct } = require('../utils/jobStatus');
 const upload = require('../middleware/upload');
 const router = express.Router();
 
@@ -122,6 +123,9 @@ router.get('/jobs/:id', requireAuth, async (req, res) => {
   const currentIndex = allStages.findIndex(s => s.id === job.current_stage_id);
   const nextStage = currentIndex >= 0 && currentIndex < allStages.length - 1 ? allStages[currentIndex + 1] : null;
 
+  const progressPct = computeProgressPct(job.sequence_order, allStages.length);
+  const { rag, label: ragLabel } = computeRag(job);
+
   // Required documents for the CURRENT stage (admin-configured), and what's
   // already been uploaded for this job at this stage - the "department gate".
   let requirements = [];
@@ -143,7 +147,7 @@ router.get('/jobs/:id', requireAuth, async (req, res) => {
     [Object.keys(DOCUMENT_TYPES).filter(k => DOCUMENT_TYPES[k].scope === 'job')]
   );
 
-  res.render('jobs/view', { title: job.job_no, job, allStages, history, documents, nextStage, requirements, missingMandatory, genDocTypes });
+  res.render('jobs/view', { title: job.job_no, job, allStages, history, documents, nextStage, requirements, missingMandatory, genDocTypes, progressPct, rag, ragLabel });
 });
 
 // GENERATE a technical document (Routine Test Report, Nameplate, etc.) for this unit

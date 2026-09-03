@@ -2,7 +2,13 @@
   <a class="navbar-brand fw-bold" href="/dashboard">
     <span class="brand-mark">360</span>&nbsp; <%= appName %> <small class="d-none d-md-inline">by Trafo Power & Electricals Pvt. Ltd.</small>
   </a>
+  <form action="/search" method="GET" class="mx-auto d-none d-lg-block" style="width:320px;">
+    <input type="search" name="q" class="form-control form-control-sm" placeholder="Search jobs, orders, documents..." aria-label="Global search">
+  </form>
   <div class="d-flex align-items-center text-white">
+    <button type="button" class="btn btn-sm btn-outline-light me-2" data-theme-toggle title="Toggle dark mode">
+      <i class="bi bi-moon-stars" data-theme-icon></i>
+    </button>
     <span class="me-3 d-none d-sm-inline">
       <i class="bi bi-person-circle"></i> <%= currentUser.name %>
       <span class="badge bg-light text-dark ms-1"><%= currentUser.role_name %></span>

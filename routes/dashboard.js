@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../config/db');
 const { requireAuth } = require('../middleware/auth');
+const { computeRag, computeProgressPct } = require('../utils/jobStatus');
 const router = express.Router();
 
 router.get('/dashboard', requireAuth, async (req, res) => {
@@ -9,10 +10,16 @@ router.get('/dashboard', requireAuth, async (req, res) => {
   const [jobsByPhase] = await pool.query(`
     SELECT s.phase, COUNT(*) AS cnt FROM jobs j JOIN stages s ON j.current_stage_id = s.id
     WHERE j.status='Active' AND j.is_deleted=0 GROUP BY s.phase`);
-  const [recentJobs] = await pool.query(`
-    SELECT j.*, s.stage_name, s.phase FROM jobs j LEFT JOIN stages s ON j.current_stage_id = s.id
+  const [[{ totalStages }]] = await pool.query(`SELECT COUNT(*) AS totalStages FROM stages WHERE is_active=1`);
+  const [recentJobsRaw] = await pool.query(`
+    SELECT j.*, s.stage_name, s.phase, s.sequence_order FROM jobs j LEFT JOIN stages s ON j.current_stage_id = s.id
     WHERE j.is_deleted=0
     ORDER BY j.updated_at DESC LIMIT 8`);
+  const recentJobs = recentJobsRaw.map(job => ({
+    ...job,
+    progressPct: computeProgressPct(job.sequence_order, totalStages),
+    rag: computeRag(job).rag
+  }));
   const [[{ issuedDocs }]] = await pool.query(`SELECT COUNT(*) AS issuedDocs FROM document_issues WHERE status IN ('Issued','Overdue')`);
   const [[{ overdueDocs }]] = await pool.query(`SELECT COUNT(*) AS overdueDocs FROM document_issues WHERE status IN ('Overdue','Escalated')`);
   const [[{ pendingApprovals }]] = await pool.query(`SELECT COUNT(*) AS pendingApprovals FROM document_issues WHERE status='Pending Approval'`);

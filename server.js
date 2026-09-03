@@ -120,6 +120,7 @@ app.use((req, res, next) => {
 app.post('/login', loginLimiter);
 app.use((req, res, next) => (/\/generate-document$/.test(req.path) ? generateDocumentLimiter(req, res, next) : next()));
 app.use(require('./routes/auth'));
+app.use(require('./routes/search'));
 app.use(require('./routes/dashboard'));
 app.use(require('./routes/jobs'));
 app.use(require('./routes/orders'));
