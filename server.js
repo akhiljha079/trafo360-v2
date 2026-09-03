@@ -31,6 +31,17 @@ const pool = require('./config/db');
 const app = express();
 const isProd = process.env.NODE_ENV === 'production';
 
+// Sessions and CSRF tokens are both signed with this secret (see
+// config/csrf.js) - the placeholder default is publicly visible in this
+// codebase, so running production with it means anyone can forge a session
+// or bypass CSRF. docker-compose already fails fast on this (SESSION_SECRET
+// is a required compose variable); the aaPanel/manual deploy path has no
+// equivalent gate, so enforce it here instead of failing silently.
+if (isProd && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'change_this_secret' || process.env.SESSION_SECRET === 'change_this_to_a_long_random_string')) {
+  console.error('FATAL: SESSION_SECRET is not set (or is still the placeholder) in .env. Set it to a long random string before running in production.');
+  process.exit(1);
+}
+
 // Trust the reverse proxy (aaPanel/nginx) for correct req.ip / req.secure
 // behind SSL termination - needed for rate limiting and secure cookies.
 app.set('trust proxy', 1);

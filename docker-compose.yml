@@ -14,8 +14,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    # Bound to localhost only, not all interfaces - the app talks to this
+    # over the internal Docker network (DB_HOST=db below); this port mapping
+    # exists only so you can point a local DB GUI at it for debugging. Remove
+    # entirely if you don't need that.
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
 
   app:
     build: .
