@@ -1,0 +1,66 @@
+<h4 class="mb-3">WhatsApp Notifications (WhatsApp Web - No Paid API)</h4>
+
+<div class="alert alert-warning">
+  <strong>Please read before enabling:</strong> this connects the system to a real WhatsApp account
+  by automating WhatsApp Web (not the official paid Business API). Use a dedicated company phone
+  number, not someone's personal daily-use number. The phone must stay powered on and connected to
+  the internet at all times &mdash; WhatsApp Web relays messages through it. This is unofficial
+  automation; WhatsApp's Terms of Service technically don't permit it, though it is widely used for
+  internal staff notifications at reasonable volume. If you'd rather not take this on, leave it
+  disabled &mdash; every notification in this system is also sent by email regardless.
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">Connection Status</div>
+      <div class="card-body text-center">
+        <% if (status.status === 'ready') { %>
+          <div class="mb-3"><span class="badge bg-success fs-6">Connected</span></div>
+          <p class="text-muted">WhatsApp Web is connected and sending notifications.</p>
+          <form action="/admin/whatsapp/disable" method="POST" onsubmit="return confirm('Disconnect WhatsApp notifications?')">
+            <button class="btn btn-outline-danger" type="submit">Disconnect</button>
+          </form>
+        <% } else if (status.status === 'qr_pending') { %>
+          <div class="mb-3"><span class="badge bg-warning text-dark fs-6">Waiting for QR Scan</span></div>
+          <img src="<%= status.qr %>" alt="Scan with WhatsApp" style="width:220px;height:220px;">
+          <p class="text-muted small mt-2">On the company phone: WhatsApp &rarr; Settings &rarr; Linked Devices &rarr; Link a Device, then scan this code.</p>
+          <p class="text-muted small">This page does not auto-refresh &mdash; reload it to check status or see an updated QR code.</p>
+        <% } else if (status.status === 'initializing') { %>
+          <div class="mb-3"><span class="badge bg-info text-dark fs-6">Starting…</span></div>
+          <p class="text-muted">Reload this page in a few seconds &mdash; a QR code should appear shortly.</p>
+        <% } else if (status.status === 'error') { %>
+          <div class="mb-3"><span class="badge bg-danger fs-6">Error</span></div>
+          <p class="text-danger small"><%= status.error %></p>
+          <p class="text-muted small">Common causes: Chromium not installed on the server, or no outbound internet access. See the README for the aaPanel setup steps.</p>
+          <form action="/admin/whatsapp/enable" method="POST">
+            <button class="btn btn-outline-primary" type="submit">Retry</button>
+          </form>
+        <% } else { %>
+          <div class="mb-3"><span class="badge bg-secondary fs-6">Disabled</span></div>
+          <p class="text-muted">WhatsApp notifications are currently off. All notifications are still sent by email.</p>
+          <form action="/admin/whatsapp/enable" method="POST">
+            <button class="btn btn-primary" type="submit">Enable WhatsApp Notifications</button>
+          </form>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">How It Works</div>
+      <div class="card-body">
+        <ol class="small mb-0">
+          <li>Click <b>Enable</b>, then scan the QR code that appears with the company WhatsApp phone.</li>
+          <li>Once connected, every stage-change notification and every document-issue email
+              (approval requests, reminders, overdue alerts, escalations, extension decisions)
+              is also sent as a WhatsApp message &mdash; but only to users who have a
+              <b>WhatsApp Number</b> saved on their profile (Admin &rarr; Users).</li>
+          <li>If the phone goes offline or is unlinked, status will show "Error" here &mdash;
+              notifications will simply continue by email only until you reconnect.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>

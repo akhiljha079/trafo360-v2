@@ -1,0 +1,48 @@
+<h4 class="mb-3">Manage Roles & Privileges</h4>
+<p class="text-muted">Tick the privileges each role should have. These control what users with that role can see and do across the system (including who is eligible to approve document issues, receive Director-level escalations, and view confidential documents).</p>
+
+<div class="card mb-3">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Role</th>
+          <th>Admin</th>
+          <th>Director<br><small class="text-muted">(gets escalations)</small></th>
+          <th>View Confidential</th>
+          <th>Approve Doc. Issue</th>
+          <th>Manage Documents</th>
+          <th>Manage Jobs</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      <% roles.forEach(function(r) { %>
+        <tr>
+          <form action="/admin/roles/<%= r.id %>" method="POST">
+          <td><%= r.name %></td>
+          <td><input type="checkbox" name="is_admin" <%= r.is_admin?'checked':'' %>></td>
+          <td><input type="checkbox" name="is_director" <%= r.is_director?'checked':'' %>></td>
+          <td><input type="checkbox" name="can_view_confidential" <%= r.can_view_confidential?'checked':'' %>></td>
+          <td><input type="checkbox" name="can_approve_document_issue" <%= r.can_approve_document_issue?'checked':'' %>></td>
+          <td><input type="checkbox" name="can_manage_documents" <%= r.can_manage_documents?'checked':'' %>></td>
+          <td><input type="checkbox" name="can_manage_jobs" <%= r.can_manage_jobs?'checked':'' %>></td>
+          <td><button class="btn btn-sm btn-outline-primary" type="submit">Save</button></td>
+          </form>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="max-width:500px;">
+  <div class="card-header">Add New Role</div>
+  <div class="card-body">
+    <form action="/admin/roles" method="POST" class="row g-2">
+      <div class="col-md-6"><input type="text" name="name" class="form-control" placeholder="Role name" required></div>
+      <div class="col-md-6"><input type="text" name="description" class="form-control" placeholder="Description"></div>
+      <div class="col-12"><button class="btn btn-primary" type="submit">Add Role</button></div>
+    </form>
+  </div>
+</div>

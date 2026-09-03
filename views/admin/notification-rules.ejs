@@ -1,0 +1,81 @@
+<h4 class="mb-3">Notification Rules</h4>
+<p class="text-muted">Choose who receives an automatic email when a job starts or completes each stage. You can assign a whole Role (everyone with that role gets the email) or a specific person.</p>
+
+<div class="card mb-4">
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Stage</th><th>Event</th><th>Recipient</th><th>Active</th><th></th></tr></thead>
+      <tbody>
+      <% rules.forEach(function(r) { %>
+        <tr>
+          <td><span class="badge badge-phase-<%= r.phase %>"><%= r.stage_name %></span></td>
+          <td><%= r.event === 'on_start' ? 'On Start' : 'On Complete' %></td>
+          <td><%= r.role_name ? 'Role: ' + r.role_name : 'User: ' + r.user_name %></td>
+          <td>
+            <form action="/admin/notification-rules/<%= r.id %>/toggle" method="POST">
+              <button class="btn btn-sm <%= r.is_active ? 'btn-outline-success' : 'btn-outline-secondary' %>" type="submit">
+                <%= r.is_active ? 'Active' : 'Inactive' %>
+              </button>
+            </form>
+          </td>
+          <td>
+            <form action="/admin/notification-rules/<%= r.id %>/delete" method="POST" onsubmit="return confirm('Remove this rule?')">
+              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+      <% }); %>
+      <% if (rules.length === 0) { %><tr><td colspan="5" class="text-center text-muted py-3">No rules configured yet - no automatic emails will be sent.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="max-width:700px;">
+  <div class="card-header">Add Notification Rule</div>
+  <div class="card-body">
+    <form action="/admin/notification-rules" method="POST" class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label small">Stage</label>
+        <select name="stage_id" class="form-select" required>
+          <% stages.forEach(function(s) { %><option value="<%= s.id %>"><%= s.phase %> - <%= s.stage_code %> - <%= s.stage_name %></option><% }); %>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label small">Event</label>
+        <select name="event" class="form-select" required>
+          <option value="on_start">On Start (job enters this stage)</option>
+          <option value="on_complete">On Complete (job finishes this stage)</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Recipient Type</label>
+        <select name="recipient_type" class="form-select" id="recipientType" onchange="toggleRecipient()" required>
+          <option value="role">Entire Role</option>
+          <option value="user">Specific User</option>
+        </select>
+      </div>
+      <div class="col-md-8" id="roleField">
+        <label class="form-label small">Role</label>
+        <select name="recipient_role_id" class="form-select">
+          <% roles.forEach(function(r) { %><option value="<%= r.id %>"><%= r.name %></option><% }); %>
+        </select>
+      </div>
+      <div class="col-md-8 d-none" id="userField">
+        <label class="form-label small">User</label>
+        <select name="recipient_user_id" class="form-select">
+          <% users.forEach(function(u) { %><option value="<%= u.id %>"><%= u.name %> (<%= u.email %>)</option><% }); %>
+        </select>
+      </div>
+      <div class="col-12"><button class="btn btn-primary" type="submit">Add Rule</button></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function toggleRecipient() {
+  const type = document.getElementById('recipientType').value;
+  document.getElementById('roleField').classList.toggle('d-none', type !== 'role');
+  document.getElementById('userField').classList.toggle('d-none', type !== 'user');
+}
+</script>

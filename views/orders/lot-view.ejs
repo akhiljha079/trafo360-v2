@@ -1,0 +1,47 @@
+<div class="mb-3">
+  <a href="/orders/<%= order.id %>" class="text-decoration-none small">&larr; <%= order.order_no %></a>
+  <div class="d-flex justify-content-between align-items-start">
+    <div>
+      <h4 class="mb-0"><%= lot.lot_name %> <span class="text-muted fs-6">(<%= lot.quantity %> units)</span></h4>
+      <div class="text-muted small"><%= order.customer_name %> &middot; <%= order.transformer_type %> &middot; <%= order.rating || '' %></div>
+    </div>
+    <span class="badge bg-secondary fs-6"><%= lot.status %></span>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">Manufacturing Progress Matrix</div>
+  <div class="card-body">
+    <p class="text-muted small">How many of the <%= units.length %> units in this lot have completed each stage &mdash; this answers "how many tanks are prepared, how many painted, how many wound," etc.</p>
+    <% matrix.forEach(function(m) { %>
+      <div class="mb-2">
+        <div class="d-flex justify-content-between small mb-1">
+          <span><span class="badge badge-phase-<%= m.stage.phase %>"><%= m.stage.stage_code %></span> <%= m.stage.stage_name %></span>
+          <span><b><%= m.completed %></b> / <%= m.total %> completed <% if (m.inProgress) { %><span class="text-muted">(<%= m.inProgress %> in progress)</span><% } %></span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" style="width:<%= m.pct %>%;"></div></div>
+      </div>
+    <% }); %>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Units in This Lot</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Unit</th><th>Job No.</th><th>Serial No.</th><th>Current Stage</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      <% units.forEach(function(u) { %>
+        <tr>
+          <td>#<%= u.unit_no %></td>
+          <td><%= u.job_no %></td>
+          <td><%= u.serial_no || '-' %></td>
+          <td><% if (u.stage_name) { %><span class="badge badge-phase-<%= u.phase %>"><%= u.stage_code %></span> <span class="small"><%= u.stage_name %></span><% } else { %>-<% } %></td>
+          <td><span class="badge bg-secondary"><%= u.status %></span></td>
+          <td><a href="/jobs/<%= u.id %>" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>

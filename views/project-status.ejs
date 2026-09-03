@@ -1,0 +1,75 @@
+<h4 class="mb-3">Project Status</h4>
+<p class="text-muted small mb-3">Overall progress and delivery risk for every transformer job, based on its current stage and target dispatch date.</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-2 col-6">
+    <div class="card p-3 text-center">
+      <div class="rag-dot rag-green mx-auto mb-1"></div>
+      <div class="fs-4 fw-bold"><%= summary.green %></div>
+      <div class="text-muted small">On Track</div>
+    </div>
+  </div>
+  <div class="col-md-2 col-6">
+    <div class="card p-3 text-center">
+      <div class="rag-dot rag-amber mx-auto mb-1"></div>
+      <div class="fs-4 fw-bold"><%= summary.amber %></div>
+      <div class="text-muted small">At Risk</div>
+    </div>
+  </div>
+  <div class="col-md-2 col-6">
+    <div class="card p-3 text-center">
+      <div class="rag-dot rag-red mx-auto mb-1"></div>
+      <div class="fs-4 fw-bold"><%= summary.red %></div>
+      <div class="text-muted small">Delayed</div>
+    </div>
+  </div>
+  <div class="col-md-2 col-6">
+    <div class="card p-3 text-center">
+      <div class="rag-dot rag-gray mx-auto mb-1"></div>
+      <div class="fs-4 fw-bold"><%= summary.gray %></div>
+      <div class="text-muted small">No Target / On Hold</div>
+    </div>
+  </div>
+  <div class="col-md-4 col-12">
+    <div class="card p-3 text-center">
+      <div class="fs-4 fw-bold text-danger"><%= summary.stalled %></div>
+      <div class="text-muted small">Stalled 10+ days in current stage</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead>
+        <tr>
+          <th>Job No.</th><th>Customer</th><th>Type</th><th>Current Stage</th>
+          <th style="width:160px;">Progress</th><th>Days in Stage</th><th>Target Dispatch</th><th>Status</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+      <% rows.forEach(function(r) { %>
+        <tr>
+          <td><%= r.job_no %></td>
+          <td><%= r.customer_name %></td>
+          <td class="small"><%= r.transformer_type %></td>
+          <td><% if (r.stage_name) { %><span class="badge badge-phase-<%= r.phase %>"><%= r.stage_code %></span> <span class="small"><%= r.stage_name %></span><% } else { %>-<% } %></td>
+          <td>
+            <div class="progress-track"><div class="progress-fill" style="width:<%= r.progressPct %>%;"></div></div>
+            <div class="small text-muted"><%= r.progressPct %>%</div>
+          </td>
+          <td>
+            <% if (r.daysInStage !== null) { %>
+              <%= r.daysInStage %>d <% if (r.stalled) { %><i class="bi bi-exclamation-triangle-fill text-danger" title="Stalled 10+ days"></i><% } %>
+            <% } else { %>-<% } %>
+          </td>
+          <td><%= r.target_dispatch_date || '-' %></td>
+          <td><span class="badge badge-rag-<%= r.rag %>"><span class="rag-dot rag-<%= r.rag %>" style="background:currentColor;opacity:0.01;"></span><%= r.ragLabel %></span></td>
+          <td><a href="/jobs/<%= r.id %>" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+      <% }); %>
+      <% if (rows.length === 0) { %><tr><td colspan="9" class="text-center text-muted py-4">No jobs yet.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>

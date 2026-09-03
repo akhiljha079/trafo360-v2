@@ -1,0 +1,67 @@
+<h4 class="mb-3"><%= order ? 'Edit ' + order.order_no : 'New Order' %></h4>
+
+<form action="<%= order ? '/orders/' + order.id + '/edit' : '/orders' %>" method="POST">
+  <div class="card mb-3">
+    <div class="card-header">Order Details</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <% if (!order) { %>
+        <div class="col-md-4">
+          <label class="form-label">Order No. *</label>
+          <input type="text" name="order_no" class="form-control" required placeholder="ORD-2026-014">
+        </div>
+        <% } %>
+        <div class="col-md-<%= order ? 6 : 4 %>">
+          <label class="form-label">Customer Name *</label>
+          <input type="text" name="customer_name" class="form-control" required value="<%= order ? order.customer_name : '' %>">
+        </div>
+        <div class="col-md-<%= order ? 6 : 4 %>">
+          <label class="form-label">Customer PO No.</label>
+          <input type="text" name="po_no" class="form-control" value="<%= order && order.po_no ? order.po_no : '' %>">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Transformer Type *</label>
+          <select name="transformer_type" class="form-select" required>
+            <% ['Power Transformer','Distribution Transformer','IDT (Interconnecting/Auto)','Special Purpose'].forEach(function(t) { %>
+              <option value="<%= t %>" <%= order && order.transformer_type===t ? 'selected' : '' %>><%= t %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Rating</label>
+          <input type="text" name="rating" class="form-control" placeholder="10MVA, 33/11kV" value="<%= order && order.rating ? order.rating : '' %>">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Total Order Quantity *</label>
+          <input type="number" name="total_quantity" class="form-control" min="1" required value="<%= order ? order.total_quantity : 1 %>">
+          <div class="form-text">Total number of transformer units in this order (e.g. 50). You'll split this into Lots afterward.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header">GTP / Technical Parameters</div>
+    <div class="card-body">
+      <p class="text-muted small">These fields drive the system-generated department work orders (Core, Winding, Tank, Testing, etc.) - fill in whatever is known now; you can update it later.</p>
+      <% gtpGroups.forEach(function(group) { %>
+        <h6 class="mt-3 mb-2" style="color:#0F3B5F;"><%= group.group %></h6>
+        <div class="row g-3 mb-2">
+          <% group.fields.forEach(function(f) { %>
+            <div class="col-md-4">
+              <label class="form-label small mb-1"><%= f.label %><% if (f.unit) { %> <span class="text-muted">(<%= f.unit %>)</span><% } %></label>
+              <% if (f.type === 'textarea') { %>
+                <textarea name="gtp_<%= f.key %>" class="form-control form-control-sm" rows="2"><%= gtpData[f.key] || '' %></textarea>
+              <% } else { %>
+                <input type="text" name="gtp_<%= f.key %>" class="form-control form-control-sm" value="<%= gtpData[f.key] || '' %>">
+              <% } %>
+            </div>
+          <% }); %>
+        </div>
+      <% }); %>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary"><%= order ? 'Save Changes' : 'Create Order' %></button>
+  <a href="<%= order ? '/orders/' + order.id : '/orders' %>" class="btn btn-outline-secondary">Cancel</a>
+</form>

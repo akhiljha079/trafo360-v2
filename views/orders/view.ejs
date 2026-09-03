@@ -1,0 +1,132 @@
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h4 class="mb-0"><%= order.order_no %> &mdash; <%= order.customer_name %></h4>
+    <div class="text-muted small"><%= order.transformer_type %> &middot; <%= order.rating || 'N/A' %> &middot; PO: <%= order.po_no || 'N/A' %> &middot; Qty: <%= order.total_quantity %></div>
+  </div>
+  <div class="text-end">
+    <span class="badge bg-secondary fs-6 mb-2"><%= order.status %></span><br>
+    <% if (currentUser.can_manage_jobs) { %>
+      <a href="/orders/<%= order.id %>/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i> Edit / GTP</a>
+      <a href="/forms/submission-new.php?order_id=<%= order.id %>" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-ruled"></i> Custom Sheets</a>
+      <form action="/orders/<%= order.id %>/delete" method="POST" class="d-inline" onsubmit="return confirm('Delete this order? Units and history are preserved for audit but the order will be archived.')">
+        <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i> Delete</button>
+      </form>
+    <% } %>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card mb-3">
+      <div class="card-header">Lots (<%= lots.length %>) &mdash; <%= allocatedQty %> / <%= order.total_quantity %> units allocated</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Lot</th><th>Qty</th><th>Completed</th><th>Planned Start</th><th>Planned Completion</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+          <% lots.forEach(function(l) { %>
+            <tr>
+              <td><b><%= l.lot_name %></b></td>
+              <td><%= l.quantity %></td>
+              <td><%= l.completed_units %> / <%= l.unit_count %></td>
+              <td class="small"><%= l.planned_start_date || '-' %></td>
+              <td class="small"><%= l.planned_completion_date || '-' %></td>
+              <td><span class="badge bg-secondary"><%= l.status %></span></td>
+              <td><a href="/orders/<%= order.id %>/lots/<%= l.id %>" class="btn btn-sm btn-outline-primary">Progress</a></td>
+            </tr>
+          <% }); %>
+          <% if (lots.length === 0) { %><tr><td colspan="7" class="text-center text-muted py-3">No lots yet - add one below.</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <% if (currentUser.can_manage_jobs && allocatedQty < order.total_quantity) { %>
+    <div class="card mb-3">
+      <div class="card-header">Add a Lot</div>
+      <div class="card-body">
+        <form action="/orders/<%= order.id %>/lots" method="POST" class="row g-2">
+          <div class="col-md-2">
+            <label class="form-label small">Lot No.</label>
+            <input type="number" name="lot_no" class="form-control" value="<%= nextLotNo %>" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Lot Name</label>
+            <input type="text" name="lot_name" class="form-control" placeholder="Lot <%= nextLotNo %>">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small">Quantity</label>
+            <input type="number" name="quantity" class="form-control" min="1" max="<%= order.total_quantity - allocatedQty %>" value="<%= Math.min(10, order.total_quantity - allocatedQty) %>" required>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small">Planned Start</label>
+            <input type="date" name="planned_start_date" class="form-control">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small">Planned Completion</label>
+            <input type="date" name="planned_completion_date" class="form-control">
+          </div>
+          <div class="col-md-1 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100">Add</button>
+          </div>
+          <div class="col-12"><p class="text-muted small mb-0"><%= order.total_quantity - allocatedQty %> unit(s) remaining to allocate. Each unit gets its own job number, e.g. <%= order.order_no %>-L<%= nextLotNo %>-U01.</p></div>
+        </form>
+      </div>
+    </div>
+    <% } %>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header">GTP Summary</div>
+      <div class="card-body" style="max-height:420px;overflow-y:auto;">
+        <% gtpGroups.forEach(function(group) { %>
+          <% var hasValues = group.fields.some(f => gtpData[f.key]); %>
+          <% if (hasValues) { %>
+            <h6 class="small text-muted text-uppercase mt-2 mb-1"><%= group.group %></h6>
+            <table class="table table-sm mb-2">
+              <% group.fields.forEach(function(f) { %>
+                <% if (gtpData[f.key]) { %>
+                  <tr><td class="small text-muted" style="width:60%;"><%= f.label %></td><td class="small"><%= gtpData[f.key] %> <%= f.unit ? f.unit : '' %></td></tr>
+                <% } %>
+              <% }); %>
+            </table>
+          <% } %>
+        <% }); %>
+        <% if (!gtpGroups.some(g => g.fields.some(f => gtpData[f.key]))) { %>
+          <p class="text-muted small mb-0">No GTP parameters entered yet. <a href="/orders/<%= order.id %>/edit">Add them here.</a></p>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Department Work Orders</div>
+      <div class="card-body">
+        <p class="text-muted small">System-generated, printable work orders pulling the relevant GTP parameters for each department. Optionally select a lot to list its unit serial numbers on the sheet.</p>
+        <% if (lots.length) { %>
+        <select id="workOrderLot" class="form-select form-select-sm mb-2">
+          <option value="">-- Whole order (no lot list) --</option>
+          <% lots.forEach(function(l) { %><option value="<%= l.id %>"><%= l.lot_name %></option><% }); %>
+        </select>
+        <% } %>
+        <div class="d-flex flex-wrap gap-2">
+          <% mfgStages.forEach(function(s) { %>
+            <a href="#" class="btn btn-sm btn-outline-secondary work-order-link" data-stage="<%= s.stage_code %>"><%= s.stage_code %> &middot; <%= s.stage_name %></a>
+          <% }); %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.work-order-link').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const stage = this.getAttribute('data-stage');
+      const lotSel = document.getElementById('workOrderLot');
+      const lotId = lotSel ? lotSel.value : '';
+      const url = `/orders/<%= order.id %>/work-order/${stage}` + (lotId ? `?lot_id=${lotId}` : '');
+      window.open(url, '_blank');
+    });
+  });
+</script>

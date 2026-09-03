@@ -1,0 +1,21 @@
+<h4 class="mb-3">Request Document Issue</h4>
+<div class="card" style="max-width:600px;">
+  <div class="card-body">
+    <p><b>Document:</b> <%= doc.doc_code %> - <%= doc.doc_name %></p>
+    <p><b>Confidentiality:</b> <%= doc.confidentiality %></p>
+    <form action="/issues" method="POST">
+      <input type="hidden" name="document_id" value="<%= doc.id %>">
+      <div class="mb-3">
+        <label class="form-label">Purpose of Issue *</label>
+        <textarea name="purpose" class="form-control" rows="3" required placeholder="e.g. Customer audit reference, internal review, dispatch documentation compilation..."></textarea>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Requested Period (days)</label>
+        <input type="number" name="requested_days" class="form-control" value="<%= defaultDays %>" min="1" max="90">
+      </div>
+      <p class="text-muted small">This request will be sent for approval to the Director / authorized approver via email. You will be notified once a decision is made.</p>
+      <button type="submit" class="btn btn-primary">Submit Request</button>
+      <a href="/documents/<%= doc.id %>" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+  </div>
+</div>

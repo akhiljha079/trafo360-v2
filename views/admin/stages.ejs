@@ -1,0 +1,83 @@
+<h4 class="mb-3">Manage Workflow Stages</h4>
+<p class="text-muted">This is the customizable Sales &rarr; Manufacturing &rarr; Dispatch workflow. Add, edit, reorder, or disable stages to match how your factory actually works — jobs will automatically follow whatever order is defined here.</p>
+
+<div class="card mb-4">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>#</th><th>Code</th><th>Stage Name</th><th>Phase</th><th>Owner Role</th><th>Active</th><th>Reorder</th><th></th></tr></thead>
+      <tbody>
+      <% stages.forEach(function(s) { %>
+        <tr>
+          <td><%= s.sequence_order %></td>
+          <td><b><%= s.stage_code %></b></td>
+          <td>
+            <form action="/admin/stages/<%= s.id %>" method="POST" class="d-flex gap-1 flex-wrap align-items-center">
+              <input type="text" name="stage_name" class="form-control form-control-sm" value="<%= s.stage_name %>" style="width:220px;">
+              <select name="phase" class="form-select form-select-sm" style="width:140px;">
+                <option value="Sales" <%= s.phase==='Sales'?'selected':'' %>>Sales</option>
+                <option value="Manufacturing" <%= s.phase==='Manufacturing'?'selected':'' %>>Manufacturing</option>
+                <option value="Dispatch" <%= s.phase==='Dispatch'?'selected':'' %>>Dispatch</option>
+              </select>
+              <input type="number" name="sequence_order" class="form-control form-control-sm" value="<%= s.sequence_order %>" style="width:70px;">
+              <select name="owner_role_id" class="form-select form-select-sm" style="width:180px;">
+                <option value="">-- No Owner --</option>
+                <% roles.forEach(function(r) { %>
+                  <option value="<%= r.id %>" <%= r.id===s.owner_role_id?'selected':'' %>><%= r.name %></option>
+                <% }); %>
+              </select>
+              <input type="text" name="description" class="form-control form-control-sm" value="<%= s.description || '' %>" placeholder="Description" style="width:200px;">
+              <button class="btn btn-sm btn-outline-primary" type="submit">Save</button>
+            </form>
+          </td>
+          <td><span class="badge badge-phase-<%= s.phase %>"><%= s.phase %></span></td>
+          <td class="small text-muted"><%= roles.find(r => r.id === s.owner_role_id) ? roles.find(r => r.id === s.owner_role_id).name : '-' %></td>
+          <td>
+            <form action="/admin/stages/<%= s.id %>/toggle" method="POST">
+              <button class="btn btn-sm <%= s.is_active ? 'btn-outline-success' : 'btn-outline-secondary' %>" type="submit">
+                <%= s.is_active ? 'Enabled' : 'Disabled' %>
+              </button>
+            </form>
+          </td>
+          <td>
+            <form action="/admin/stages/<%= s.id %>/reorder" method="POST" class="d-inline">
+              <input type="hidden" name="direction" value="up">
+              <button class="btn btn-sm btn-light" type="submit" title="Move Up"><i class="bi bi-arrow-up"></i></button>
+            </form>
+            <form action="/admin/stages/<%= s.id %>/reorder" method="POST" class="d-inline">
+              <input type="hidden" name="direction" value="down">
+              <button class="btn btn-sm btn-light" type="submit" title="Move Down"><i class="bi bi-arrow-down"></i></button>
+            </form>
+          </td>
+          <td></td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="max-width:800px;">
+  <div class="card-header">Add New Stage</div>
+  <div class="card-body">
+    <form action="/admin/stages" method="POST" class="row g-2">
+      <div class="col-md-2"><input type="text" name="stage_code" class="form-control" placeholder="Code e.g. M14" required></div>
+      <div class="col-md-3"><input type="text" name="stage_name" class="form-control" placeholder="Stage Name" required></div>
+      <div class="col-md-2">
+        <select name="phase" class="form-select" required>
+          <option value="Sales">Sales</option>
+          <option value="Manufacturing">Manufacturing</option>
+          <option value="Dispatch">Dispatch</option>
+        </select>
+      </div>
+      <div class="col-md-2"><input type="number" name="sequence_order" class="form-control" placeholder="Order #" required></div>
+      <div class="col-md-3">
+        <select name="owner_role_id" class="form-select">
+          <option value="">-- No Owner --</option>
+          <% roles.forEach(function(r) { %><option value="<%= r.id %>"><%= r.name %></option><% }); %>
+        </select>
+      </div>
+      <div class="col-md-12"><input type="text" name="description" class="form-control" placeholder="Description (optional)"></div>
+      <div class="col-md-12"><button class="btn btn-primary" type="submit">Add Stage</button></div>
+    </form>
+  </div>
+</div>

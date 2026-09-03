@@ -1,0 +1,31 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Orders</h4>
+  <% if (currentUser.can_manage_jobs) { %>
+    <a href="/orders/new" class="btn btn-primary"><i class="bi bi-plus-lg"></i> New Order</a>
+  <% } %>
+</div>
+<p class="text-muted small">An Order represents a customer PO with a fixed GTP/design (e.g. "50 x 10MVA transformers"). Break it into Lots to track manufacturing batch by batch.</p>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead><tr><th>Order No.</th><th>Customer</th><th>Type</th><th>Rating</th><th>Quantity</th><th>Lots</th><th>Units Completed</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      <% orders.forEach(function(o) { %>
+        <tr>
+          <td><%= o.order_no %></td>
+          <td><%= o.customer_name %></td>
+          <td class="small"><%= o.transformer_type %></td>
+          <td><%= o.rating || '-' %></td>
+          <td><%= o.total_quantity %></td>
+          <td><%= o.lot_count %></td>
+          <td><%= o.completed_units %> / <%= o.unit_count %></td>
+          <td><span class="badge bg-secondary"><%= o.status %></span></td>
+          <td><a href="/orders/<%= o.id %>" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+      <% }); %>
+      <% if (orders.length === 0) { %><tr><td colspan="9" class="text-center text-muted py-4">No orders yet.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>

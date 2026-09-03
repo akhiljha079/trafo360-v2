@@ -1,0 +1,138 @@
+<h4 class="mb-3">Analytics</h4>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header">Jobs by Phase & Status</div>
+      <div class="card-body"><canvas id="chartJobsByPhase" height="220"></canvas></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header">Average Time Spent per Stage (hours)</div>
+      <div class="card-body"><canvas id="chartStageDuration" height="220"></canvas></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header">Jobs Created per Month</div>
+      <div class="card-body"><canvas id="chartJobsByMonth" height="220"></canvas></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header">Document Issues by Status</div>
+      <div class="card-body"><canvas id="chartIssuesByStatus" height="220"></canvas></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header">Overdue / Escalated Documents Trend</div>
+      <div class="card-body"><canvas id="chartOverdueTrend" height="220"></canvas></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header">Stage-Completion Workload by Department</div>
+      <div class="card-body"><canvas id="chartWorkload" height="220"></canvas></div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-3">
+      <div class="card-header">Documents by Confidentiality Level</div>
+      <div class="card-body"><canvas id="chartConfidentiality" height="220"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+  const analyticsData = <%- JSON.stringify(data) %>;
+  const brandColors = ['#1F4E78','#2E75B6','#C0392B','#1E8449','#FFC107','#8E44AD','#16A085','#D35400'];
+
+  // 1) Jobs by phase & status (grouped bar)
+  (function() {
+    const phases = [...new Set(analyticsData.jobsByPhaseStatus.map(r => r.phase).filter(Boolean))];
+    const statuses = [...new Set(analyticsData.jobsByPhaseStatus.map(r => r.status))];
+    const datasets = statuses.map((st, i) => ({
+      label: st,
+      data: phases.map(p => {
+        const row = analyticsData.jobsByPhaseStatus.find(r => r.phase === p && r.status === st);
+        return row ? row.cnt : 0;
+      }),
+      backgroundColor: brandColors[i % brandColors.length]
+    }));
+    new Chart(document.getElementById('chartJobsByPhase'), {
+      type: 'bar',
+      data: { labels: phases, datasets },
+      options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  })();
+
+  // 2) Avg stage duration
+  (function() {
+    const rows = analyticsData.avgStageDuration;
+    new Chart(document.getElementById('chartStageDuration'), {
+      type: 'bar',
+      data: {
+        labels: rows.map(r => r.stage_code),
+        datasets: [{ label: 'Avg Hours', data: rows.map(r => r.avg_hours), backgroundColor: '#2E75B6' }]
+      },
+      options: {
+        responsive: true,
+        plugins: { tooltip: { callbacks: { title: (items) => rows[items[0].dataIndex].stage_name } } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  })();
+
+  // 3) Jobs created per month
+  (function() {
+    const rows = analyticsData.jobsByMonth;
+    new Chart(document.getElementById('chartJobsByMonth'), {
+      type: 'line',
+      data: { labels: rows.map(r => r.ym), datasets: [{ label: 'Jobs Created', data: rows.map(r => r.cnt), borderColor: '#1F4E78', backgroundColor: 'rgba(31,78,120,0.15)', fill: true, tension: 0.3 }] },
+      options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  })();
+
+  // 4) Document issues by status (doughnut)
+  (function() {
+    const rows = analyticsData.issuesByStatus;
+    new Chart(document.getElementById('chartIssuesByStatus'), {
+      type: 'doughnut',
+      data: { labels: rows.map(r => r.status), datasets: [{ data: rows.map(r => r.cnt), backgroundColor: brandColors }] },
+      options: { responsive: true }
+    });
+  })();
+
+  // 5) Overdue trend
+  (function() {
+    const rows = analyticsData.overdueTrend;
+    new Chart(document.getElementById('chartOverdueTrend'), {
+      type: 'line',
+      data: { labels: rows.map(r => r.ym), datasets: [{ label: 'Overdue/Escalated', data: rows.map(r => r.cnt), borderColor: '#C0392B', backgroundColor: 'rgba(192,57,43,0.15)', fill: true, tension: 0.3 }] },
+      options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  })();
+
+  // 6) Workload by role
+  (function() {
+    const rows = analyticsData.workloadByRole;
+    new Chart(document.getElementById('chartWorkload'), {
+      type: 'bar',
+      data: { labels: rows.map(r => r.role_name), datasets: [{ label: 'Stages Completed', data: rows.map(r => r.cnt), backgroundColor: '#1E8449' }] },
+      options: { indexAxis: 'y', responsive: true, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  })();
+
+  // 7) Documents by confidentiality
+  (function() {
+    const rows = analyticsData.docsByConfidentiality;
+    new Chart(document.getElementById('chartConfidentiality'), {
+      type: 'pie',
+      data: { labels: rows.map(r => r.confidentiality), datasets: [{ data: rows.map(r => r.cnt), backgroundColor: brandColors }] },
+      options: { responsive: true }
+    });
+  })();
+</script>

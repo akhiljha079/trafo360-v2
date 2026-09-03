@@ -1,0 +1,54 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">Transformer Jobs</h4>
+  <% if (currentUser.can_manage_jobs) { %>
+    <a href="/jobs/new" class="btn btn-primary"><i class="bi bi-plus-lg"></i> New Job</a>
+  <% } %>
+</div>
+
+<form class="row g-2 mb-3" method="GET">
+  <div class="col-md-3">
+    <input type="text" name="q" class="form-control" placeholder="Search Job No / Customer / PO / Serial" value="<%= filters.q || '' %>">
+  </div>
+  <div class="col-md-3">
+    <select name="phase" class="form-select">
+      <option value="">All Phases</option>
+      <option value="Sales" <%= filters.phase==='Sales'?'selected':'' %>>Sales</option>
+      <option value="Manufacturing" <%= filters.phase==='Manufacturing'?'selected':'' %>>Manufacturing</option>
+      <option value="Dispatch" <%= filters.phase==='Dispatch'?'selected':'' %>>Dispatch</option>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <select name="status" class="form-select">
+      <option value="">All Status</option>
+      <option value="Active" <%= filters.status==='Active'?'selected':'' %>>Active</option>
+      <option value="On Hold" <%= filters.status==='On Hold'?'selected':'' %>>On Hold</option>
+      <option value="Completed" <%= filters.status==='Completed'?'selected':'' %>>Completed</option>
+      <option value="Cancelled" <%= filters.status==='Cancelled'?'selected':'' %>>Cancelled</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-outline-secondary w-100" type="submit">Filter</button>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead><tr><th>Job No.</th><th>Customer</th><th>Type</th><th>Rating</th><th>Current Stage</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      <% jobs.forEach(function(j) { %>
+        <tr>
+          <td><%= j.job_no %></td>
+          <td><%= j.customer_name %></td>
+          <td><%= j.transformer_type %></td>
+          <td><%= j.rating || '-' %></td>
+          <td><% if (j.stage_name) { %><span class="badge badge-phase-<%= j.phase %>"><%= j.stage_name %></span><% } else { %>-<% } %></td>
+          <td><span class="badge bg-secondary"><%= j.status %></span></td>
+          <td><a href="/jobs/<%= j.id %>" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+      <% }); %>
+      <% if (jobs.length === 0) { %><tr><td colspan="7" class="text-center text-muted py-4">No jobs found.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>

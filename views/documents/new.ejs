@@ -1,0 +1,71 @@
+<h4 class="mb-3">Add Document to Library</h4>
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-body">
+        <form action="/documents" method="POST" enctype="multipart/form-data">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Document Code *</label>
+              <input type="text" name="doc_code" class="form-control" required placeholder="DOC-2026-0001">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Document Name *</label>
+              <input type="text" name="doc_name" class="form-control" required placeholder="Approved GA Drawing - JOB0876">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Category</label>
+              <select name="category_id" class="form-select">
+                <option value="">-- Select --</option>
+                <% categories.forEach(function(c) { %>
+                  <option value="<%= c.id %>"><%= c.name %></option>
+                <% }); %>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Confidentiality *</label>
+              <select name="confidentiality" class="form-select" required>
+                <option value="Public">Public</option>
+                <option value="Internal" selected>Internal</option>
+                <option value="Confidential">Confidential</option>
+                <option value="Highly Confidential">Highly Confidential</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Linked Transformer Job</label>
+              <select name="related_job_id" class="form-select">
+                <option value="">-- None --</option>
+                <% jobs.forEach(function(j) { %>
+                  <option value="<%= j.id %>"><%= j.job_no %> - <%= j.customer_name %></option>
+                <% }); %>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Physical Storage Location</label>
+              <input type="text" name="storage_location" class="form-control" placeholder="Rack A / Shelf 3 / Box 12">
+            </div>
+            <div class="col-md-12">
+              <label class="form-label">Upload Scanned Copy (optional)</label>
+              <input type="file" name="file" class="form-control">
+            </div>
+          </div>
+          <div class="mt-4">
+            <button type="submit" class="btn btn-primary">Add Document</button>
+            <a href="/documents" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">Quick Add Category</div>
+      <div class="card-body">
+        <form action="/admin/document-categories" method="POST" class="d-flex gap-2">
+          <input type="text" name="name" class="form-control" placeholder="New category name" required>
+          <button class="btn btn-outline-primary" type="submit">Add</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

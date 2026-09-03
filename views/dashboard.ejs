@@ -1,0 +1,110 @@
+<h4 class="mb-3">Dashboard</h4>
+
+<div class="d-flex justify-content-end mb-2">
+  <a href="/project-status" class="btn btn-sm btn-outline-primary"><i class="bi bi-speedometer"></i> View Project Status</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3 col-6">
+    <div class="card p-3">
+      <div class="text-muted small">Active Jobs</div>
+      <div class="fs-3 fw-bold text-primary"><%= activeJobs %></div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card p-3">
+      <div class="text-muted small">Completed Jobs</div>
+      <div class="fs-3 fw-bold text-success"><%= completedJobs %></div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card p-3">
+      <div class="text-muted small">Documents Issued</div>
+      <div class="fs-3 fw-bold" style="color:#2E75B6;"><%= issuedDocs %></div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card p-3">
+      <div class="text-muted small">Overdue / Escalated Docs</div>
+      <div class="fs-3 fw-bold text-danger"><%= overdueDocs %></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card mb-3">
+      <div class="card-header">Active Jobs by Phase</div>
+      <div class="card-body">
+        <% if (jobsByPhase.length === 0) { %>
+          <p class="text-muted mb-0">No active jobs.</p>
+        <% } %>
+        <% jobsByPhase.forEach(function(p) { %>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="badge badge-phase-<%= p.phase %>"><%= p.phase %></span>
+            <span class="fw-bold"><%= p.cnt %> job(s)</span>
+          </div>
+        <% }); %>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Recently Updated Jobs</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Job No.</th><th>Customer</th><th>Type</th><th>Stage</th><th></th></tr></thead>
+          <tbody>
+          <% recentJobs.forEach(function(j) { %>
+            <tr>
+              <td><%= j.job_no %></td>
+              <td><%= j.customer_name %></td>
+              <td><%= j.transformer_type %></td>
+              <td><span class="badge badge-phase-<%= j.phase %>"><%= j.stage_name || 'N/A' %></span></td>
+              <td><a href="/jobs/<%= j.id %>" class="btn btn-sm btn-outline-primary">View</a></td>
+            </tr>
+          <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header">My Issued Documents (Due Soon)</div>
+      <div class="card-body">
+        <% if (myIssues.length === 0) { %><p class="text-muted mb-0">Nothing currently issued to you.</p><% } %>
+        <% myIssues.forEach(function(m) { %>
+          <div class="d-flex justify-content-between border-bottom py-2">
+            <div>
+              <div class="fw-bold"><%= m.doc_code %></div>
+              <div class="small text-muted"><%= m.doc_name %></div>
+            </div>
+            <div class="text-end">
+              <span class="badge status-badge-<%= m.status.replace(/ /g,'') %>"><%= m.status %></span>
+              <div class="small text-muted">Due: <%= m.due_date %></div>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    </div>
+
+    <% if (currentUser.can_approve_document_issue) { %>
+    <div class="card">
+      <div class="card-header">Pending Approvals (<%= pendingApprovals %>)</div>
+      <div class="card-body">
+        <% if (pendingApprovalList.length === 0) { %><p class="text-muted mb-0">No pending approvals.</p><% } %>
+        <% pendingApprovalList.forEach(function(p) { %>
+          <div class="d-flex justify-content-between border-bottom py-2">
+            <div>
+              <div class="fw-bold"><%= p.doc_code %></div>
+              <div class="small text-muted">Requested by <%= p.requester_name %></div>
+            </div>
+            <a href="/issues/<%= p.id %>" class="btn btn-sm btn-warning">Review</a>
+          </div>
+        <% }); %>
+      </div>
+    </div>
+    <% } %>
+  </div>
+</div>

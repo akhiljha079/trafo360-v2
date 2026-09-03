@@ -1,0 +1,14 @@
+<nav class="navbar navbar-dark app-navbar px-3">
+  <a class="navbar-brand fw-bold" href="/dashboard">
+    <span class="brand-mark">360</span>&nbsp; <%= appName %> <small class="d-none d-md-inline">by Trafo Power & Electricals Pvt. Ltd.</small>
+  </a>
+  <div class="d-flex align-items-center text-white">
+    <span class="me-3 d-none d-sm-inline">
+      <i class="bi bi-person-circle"></i> <%= currentUser.name %>
+      <span class="badge bg-light text-dark ms-1"><%= currentUser.role_name %></span>
+    </span>
+    <form action="/logout" method="POST" class="m-0">
+      <button class="btn btn-sm btn-outline-light" type="submit"><i class="bi bi-box-arrow-right"></i> Logout</button>
+    </form>
+  </div>
+</nav>

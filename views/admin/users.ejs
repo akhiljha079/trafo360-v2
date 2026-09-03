@@ -1,0 +1,85 @@
+<h4 class="mb-3">Manage Users</h4>
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header">All Users</div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th>Actions</th></tr></thead>
+          <tbody>
+          <% users.forEach(function(u) { %>
+            <tr>
+              <td><%= u.name %></td>
+              <td><%= u.email %></td>
+              <td>
+                <form action="/admin/users/<%= u.id %>/role" method="POST" class="d-flex gap-1">
+                  <select name="role_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <% roles.forEach(function(r) { %>
+                      <option value="<%= r.id %>" <%= r.id===u.role_id?'selected':'' %>><%= r.name %></option>
+                    <% }); %>
+                  </select>
+                </form>
+              </td>
+              <td>
+                <form action="/admin/users/<%= u.id %>/toggle" method="POST">
+                  <button class="btn btn-sm <%= u.is_active ? 'btn-outline-success' : 'btn-outline-secondary' %>" type="submit">
+                    <%= u.is_active ? 'Active' : 'Inactive' %>
+                  </button>
+                </form>
+              </td>
+              <td>
+                <form action="/admin/users/<%= u.id %>/reset-password" method="POST" class="d-flex gap-1">
+                  <input type="password" name="new_password" class="form-control form-control-sm" placeholder="New password" style="width:130px;" required>
+                  <button class="btn btn-sm btn-outline-warning" type="submit">Reset</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-header">Add New User</div>
+      <div class="card-body">
+        <form action="/admin/users" method="POST">
+          <div class="mb-2">
+            <label class="form-label small">Full Name</label>
+            <input type="text" name="name" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Email</label>
+            <input type="email" name="email" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Password</label>
+            <input type="password" name="password" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Role</label>
+            <select name="role_id" class="form-select" required>
+              <% roles.forEach(function(r) { %><option value="<%= r.id %>"><%= r.name %></option><% }); %>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Department</label>
+            <input type="text" name="department" class="form-control">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Phone</label>
+            <input type="text" name="phone" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">WhatsApp Number <span class="text-muted">(with country code, digits only)</span></label>
+            <input type="text" name="whatsapp_number" class="form-control" placeholder="91XXXXXXXXXX">
+          </div>
+          <button type="submit" class="btn btn-primary w-100">Create User</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
