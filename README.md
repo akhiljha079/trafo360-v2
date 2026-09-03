@@ -49,59 +49,126 @@ No build step is required — it runs directly with `node server.js` / PM2. This
 
 ---
 
-## 2. Deploying on aaPanel
+## 2. Deploying on aaPanel (Web UI Walkthrough)
 
-### Step 1 — Install prerequisites in aaPanel
-In aaPanel App Store, install:
-- **Node.js Version Manager** (install Node.js 18 or 20 LTS)
-- **MySQL** (5.7 or 8.0 / MariaDB) — if not already installed
-- **PM2 Manager** (aaPanel usually bundles this with the Node.js App feature)
+Every step below happens inside the aaPanel web dashboard in your browser. The only exception is
+step 6, which uses aaPanel's built-in **Terminal** panel — still entirely inside the browser, no
+SSH client needed — because installing npm packages and seeding the database don't have a pure
+point-and-click equivalent.
 
-### Step 2 — Create the database
-In aaPanel → **Database** → Add Database:
-- Database name: `trafo_dms`
-- Username: `trafo_dms_user`
-- Password: (generate a strong password, save it)
+### Step 1 — Install prerequisites (App Store)
+Log into aaPanel, click **App Store** in the left sidebar, and install:
+- **Node.js Version Manager** → once installed, open it and click **Install Node.js version**,
+  choose **18.x** or **20.x LTS**, and install it.
+- **MySQL** (5.7 or 8.0) — if it's not already installed. During install, aaPanel will show you the
+  MySQL **root password** — save it somewhere safe (docker-compose calls the equivalent variable
+  `DB_ROOT_PASSWORD`; on aaPanel it's just the root password aaPanel generated).
+- **PM2 Manager** — search the App Store for "PM2 Manager" and install it (some aaPanel versions
+  bundle this automatically with the Node.js App feature; if you don't see a separate PM2 Manager
+  tile after installing Node.js Version Manager, it's already included).
 
-### Step 3 — Upload the application
-- Create a website/directory in aaPanel (e.g. `/www/wwwroot/trafo-dms`)
-- Upload and extract this project's contents into that folder (via aaPanel File Manager, FTP, or `git clone` if you push this to a repo)
+### Step 2 — Create the database (Database)
+Click **Database** in the left sidebar → **Add database**:
+- Database name: `trafo360` (or your own choice — you'll reuse it in Step 5)
+- Username: `trafo360_user`
+- Password: click the dice icon to generate a strong one, then **copy and save it** — you'll paste
+  it into `.env` in Step 5.
+- Access permission: leave as **Local** (the app connects from the same server, `DB_HOST=127.0.0.1`)
+- Click **Submit**.
 
-### Step 4 — Configure environment
-- Copy `.env.example` to `.env`
-- Fill in:
-  - `DB_HOST=127.0.0.1`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` (from Step 2)
-  - `SESSION_SECRET` — any long random string
-  - `SMTP_*` — you can leave placeholder values here; the **Admin → SMTP Settings** page in the app lets you (or the Director) set/change the real SMTP credentials later without touching the server
-  - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — credentials for the first login
+### Step 3 — Create the website and upload the code (Website + Files)
+1. Click **Website** in the left sidebar → **Add site**.
+2. Domain: your real domain (e.g. `trafo360.yourcompany.com`) — you can also use a bare IP for now
+   and add the real domain later, but a domain is required if you want free SSL in Step 8.
+3. Leave **Database** unchecked here (you already made one in Step 2) and **FTP** unchecked unless
+   you specifically want FTP access.
+4. Click **Submit** — aaPanel creates `/www/wwwroot/<your-domain>/`.
+5. Click **Files** in the left sidebar, navigate into that new website folder, and delete the
+   default `index.html` aaPanel put there.
+6. Get this project's code into that folder, either way:
+   - **Upload a zip**: zip this project on your machine (excluding `node_modules/`, which you don't
+     need to upload — it gets rebuilt on the server in Step 6), click **Upload** in the Files panel,
+     upload the zip into the website folder, then right-click it → **Decompress**.
+   - **Git clone**: if this project is in a git remote you control, open **Terminal** (left sidebar)
+     and run `cd /www/wwwroot/<your-domain> && git clone <your-repo-url> .`
 
-### Step 5 — Install dependencies & initialize the database
-Open aaPanel's Terminal (or SSH in) and run inside the project folder:
+### Step 4 — Configure environment (Files' built-in editor)
+1. In the **Files** panel, inside the website folder, find `.env.example` and use **Rename** to
+   duplicate it to `.env` (or upload a fresh copy named `.env`).
+2. Click `.env` → **Edit** (aaPanel opens its built-in code editor — no terminal needed for this
+   part) and fill in:
+   - `DB_HOST=127.0.0.1`, `DB_PORT=3306`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` — from Step 2
+   - `SESSION_SECRET` — **must** be a long random string; the app now refuses to start in
+     production with the placeholder value left in `.env.example`, so don't skip this. Any
+     20+ character random string works — e.g. generate one at random or run
+     `openssl rand -hex 32` in the Terminal panel if you want a cryptographically strong one.
+   - `NODE_ENV=production`
+   - `APP_URL` — your domain with `https://`, e.g. `https://trafo360.yourcompany.com` (you can
+     revisit this after Step 8 once SSL is actually issued)
+   - `SMTP_*` — placeholder values are fine here; **Admin → SMTP Settings** inside the app lets you
+     set the real mail credentials later without touching the server again
+   - `ADMIN_NAME` / `ADMIN_EMAIL` / `ADMIN_PASSWORD` — the first login you'll create in Step 5
+3. Save.
+
+### Step 5 — Install dependencies, provision Chromium, and initialize the database (Terminal)
+Click **Terminal** in the left sidebar (a browser-based shell into this exact server — still part
+of the aaPanel UI, nothing external to install) and run, inside the website folder:
 ```bash
-npm install
-npm run seed          # creates all tables + seeds roles, default stages, categories, settings
-npm run create-admin  # creates your first Admin login from .env ADMIN_EMAIL/ADMIN_PASSWORD
+cd /www/wwwroot/<your-domain>
+npm install --omit=dev
+```
+This also downloads Puppeteer's bundled Chromium (~200MB) automatically — needed for the technical
+document generation (PDF) engine (§6.1) and, if you enable it later, WhatsApp notifications (§11.4).
+It needs the server to have normal outbound internet access, which almost all VPS/aaPanel servers
+do. If your server has no outbound internet access, see §11.5 for the "install a system Chromium
+instead" alternative.
+
+Still in the same Terminal panel:
+```bash
+npm run seed          # creates all tables + seeds roles, stages, GTP schema, document templates, settings
+npm run create-admin  # creates your first Admin login from the .env ADMIN_EMAIL/ADMIN_PASSWORD you just set
 ```
 
-### Step 6 — Run the app via aaPanel's Node.js App manager
-- aaPanel → **Website** → **Node Project** → Add Node Project
-- Startup file: `server.js`
-- Port: `3000` (or whatever you set in `.env`)
-- Startup mode: PM2 (aaPanel manages restart-on-crash and restart-on-reboot automatically)
-- Start the project
+### Step 6 — Run the app (Website → Node Project)
+1. Click **Website** in the left sidebar, then the **Node Project** tab at the top (next to PHP/Java
+   project tabs — this only appears once Node.js Version Manager is installed from Step 1).
+2. Click **Add Node Project**:
+   - **Project directory**: the website folder from Step 3
+   - **Startup file**: `server.js`
+   - **Node version**: the 18.x/20.x LTS you installed in Step 1
+   - **Port**: `3000` (must match `PORT` in `.env`, or leave `.env` unset for the default)
+   - **Startup mode**: **PM2** — aaPanel then handles restart-on-crash and restart-on-reboot
+     automatically, so you don't need to babysit the process
+   - **Run command**: `npm start` (equivalent to `node server.js`)
+3. Click **Submit**, then **Start** the project. Its status should turn green ("Running"); click
+   **Logs** on the project if it doesn't, to see the actual startup error (a common one is a typo in
+   `.env`, or the `SESSION_SECRET` placeholder check in server.js refusing to boot — see Step 4).
 
-### Step 7 — Reverse proxy + SSL (recommended)
-- Create a normal aaPanel **Website** entry bound to your domain
-- Under that website's settings → **Reverse Proxy**, point it to `127.0.0.1:3000`
-- Under **SSL**, issue a free Let's Encrypt certificate for the domain
-- Update `APP_URL` in `.env` to the final `https://` domain and restart the Node project
+### Step 7 — Reverse proxy + SSL (Website settings)
+1. Back in **Website** (the normal, non-Node tab), click your site → **Settings**.
+2. Click **Reverse Proxy** → **Add Reverse Proxy**: target URL `http://127.0.0.1:3000`, leave the
+   rest at defaults, **Submit**.
+3. Click **SSL** → **Let's Encrypt** tab → select the domain → **Apply**. Once issued, toggle
+   **Force HTTPS** on.
+4. Go back to `.env` (Step 4) and make sure `APP_URL` matches the final `https://` address, then
+   restart the Node project from the **Node Project** tab (Step 6) for the change to take effect.
 
-### Step 8 — First login
-- Visit your domain, log in with the Admin credentials from Step 4
-- Go to **Admin → Users** and create real accounts for every department (Sales, Design, Stores, Production sections, QA, Dispatch, Documents Coordinator, and the Director)
-- Go to **Admin → Notification Rules** and decide who should be emailed at each stage
-- Go to **Admin → SMTP Settings** and enter your real mail server credentials (Gmail with an App Password, Office365, or your own SMTP relay all work)
-- Go to **Admin → Workflow Stages** if you want to rename/reorder/add/remove any stage to match exactly how your factory works — everything downstream (job tracking, notifications) automatically follows whatever is defined there
+### Step 8 — First login and initial configuration
+- Visit your domain, log in with the Admin credentials from Step 4.
+- **Admin → Users** — create real accounts for every department (Sales, Design, Stores, Production
+  sections, QA, Dispatch, Documents Coordinator, and the Director).
+- **Admin → Notification Rules** — decide who gets emailed at each workflow stage.
+- **Admin → SMTP Settings** — enter your real mail server credentials (Gmail with an App Password,
+  Office 365, or your own SMTP relay all work).
+- **Admin → Workflow Stages** — rename/reorder/add/remove stages to match exactly how your factory
+  works; everything downstream (job tracking, notifications, document gating) follows whatever's
+  defined here.
+- **Admin → GTP Schema** — review the default ~35-field GTP form and adjust it (or add fields/groups
+  specific to your transformer types) before Sales starts entering real orders.
+- **Admin → Document Templates** — set your real numbering prefixes and review the intro text for
+  each of the 11 generated document types before anyone relies on them going to a customer.
+- **Admin → System Settings** — set your Company Name, Tagline, and upload your Company Logo (used
+  on every generated document's letterhead), plus the Warranty Certificate terms text.
 
 ---
 
