@@ -4,6 +4,8 @@
 // the document_templates table (Admin > Document Templates, Phase 6) -
 // this file only defines the structural shape (scope + body layout), which
 // determines what data-gathering logic runs.
+const fs = require('fs');
+const path = require('path');
 const pool = require('../config/db');
 const { getSchema, fieldsForStage } = require('./gtpSchema');
 
@@ -40,6 +42,20 @@ async function getSetting(key, fallback) {
   return row && row.setting_value ? row.setting_value : fallback;
 }
 
+// Puppeteer's page.setContent() has no base URL to resolve a relative
+// /uploads/... path against, so the logo is inlined as a data URI instead.
+function readLogoDataUri(logoPath) {
+  if (!logoPath) return null;
+  try {
+    const abs = path.join(__dirname, '..', logoPath.replace(/^\/+/, ''));
+    const ext = path.extname(abs).slice(1).toLowerCase() || 'png';
+    const mime = ext === 'jpg' ? 'jpeg' : ext;
+    return `data:image/${mime};base64,${fs.readFileSync(abs).toString('base64')}`;
+  } catch (e) {
+    return null; // missing/unreadable file - documents still generate, just without a logo
+  }
+}
+
 // Gathers everything views/documents/generate/pdf-template.ejs needs for a
 // given doc_type + context ({job, order, lot}) + its document_templates row.
 async function gatherData(docType, ctx, template) {
@@ -50,7 +66,11 @@ async function gatherData(docType, ctx, template) {
   const gtpData = order ? parseGtpJson(order) : {};
   const stageCodes = (template.source_stage_codes || '').split(',').map(s => s.trim()).filter(Boolean);
 
-  const base = { docType, def, template, order, job, lot, companyName: await getSetting('company_name', 'Trafo Power & Electricals Pvt Ltd') };
+  const base = {
+    docType, def, template, order, job, lot,
+    companyName: await getSetting('company_name', 'Trafo Power & Electricals Pvt Ltd'),
+    companyLogoDataUri: readLogoDataUri(await getSetting('company_logo_path', null))
+  };
 
   if (def.body === 'test-results' || def.body === 'gtp-table') {
     const schema = order ? await getSchema(order.transformer_type) : [];
