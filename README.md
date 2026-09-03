@@ -1,13 +1,35 @@
 # TRAFO 360
-## Sales → Manufacturing → Dispatch Workflow & Document Issue Management System
+## A Front-End-Configurable Manufacturing Execution System for Transformer Manufacturing
 ### For Trafo Power & Electricals Pvt Ltd
 **Built by Vayrone Infratech**
 
-A web application that:
-1. Tracks every transformer job through a **fully customizable** workflow — Sales → Manufacturing → Dispatch — with automatic email notifications when a job enters or completes any stage (you decide, per stage, who gets emailed: a whole role or a specific person).
-2. Runs a **library-style Document Issue Management module**: a catalogued document store with confidentiality levels, an approval-gated borrow/issue workflow, automatic due-date reminders, automatic overdue escalation to the Director, and an extension-request/approval flow.
+A web application that runs a transformer manufacturer's Sales → Manufacturing → Dispatch operation
+end to end, with almost everything reconfigurable from the Admin UI rather than hardcoded:
 
-This has been built, installed, and functionally tested end-to-end (login, job creation, stage advancement with live email-log auditing, document upload, issue → approval → extension → extension-approval, role-based access control, and the daily cron escalation logic) before being handed to you.
+1. **Workflow tracking** — every transformer job moves through a fully customizable stage pipeline
+   (rename/reorder/add/remove stages, gate advancement on required documents), with automatic
+   email/WhatsApp notifications you configure per stage.
+2. **Orders, Lots & GTP-driven manufacturing** — batch orders, auto-generated per-unit jobs, and a
+   **database-driven GTP (General Technical Particulars) schema** you edit from the front end instead
+   of a fixed form.
+3. **Technical document generation** — eleven document types (test reports, QAP, packing lists,
+   certificates, and more) generated as branded PDFs straight from GTP data, auto-filed into the
+   document library.
+4. **Document Issue Management** — a library-style catalogue with confidentiality levels, an
+   approval-gated borrow/issue workflow, e-signatures, QR physical-file tracking, automatic overdue
+   escalation, and an extension flow.
+5. **Modern, themeable UI** — dark mode, a live transformer-build visualization tied to real stage
+   progress, per-user dashboard customization, validated-palette analytics charts, and global search.
+6. **Production hardening** — CSRF protection, rate limiting, a MySQL-backed session store, structured
+   logging, a Docker deployment path alongside the original aaPanel one, and a Jest/Supertest test
+   suite.
+
+The core workflow/document-management modules were built, installed, and functionally tested
+end-to-end (login, job creation, stage advancement with live email-log auditing, document upload,
+issue → approval → extension → extension-approval, role-based access control, and the daily cron
+escalation logic). Everything added since is documented per-section below, including what's been
+verified and how, and what still needs a real deployment to confirm — see
+**§16 Verification Status** before relying on anything without checking it yourself first.
 
 ---
 
@@ -241,20 +263,20 @@ Four of the previously "suggested" add-ons have now been built in. All are safe 
 if any of them can't run on your server (e.g. no Chromium for WhatsApp), the rest of the
 application is completely unaffected.
 
-### 6.1 QR-Code Physical File Tracking
+### 11.1 QR-Code Physical File Tracking
 - Every document in the library automatically gets a unique QR code (`Admin` isn't needed for this — it happens on document creation).
 - On a document's page, **Print Label** opens a printable sticker (QR + doc code + name + confidentiality) sized for a small label printer or to cut out from A4.
 - Scanning the QR with any phone camera opens `https://your-domain/scan/<token>`, which (after login, if needed) takes the person straight to that document's page — no searching required.
 - **Documents Coordinator** can **Regenerate** a document's QR code if a label is lost or compromised (the old label immediately stops working).
 - This QR mechanism can be extended to the physical folders from the file-index/folder-tree we built earlier — just create a "document" record per physical folder and print its label.
 
-### 6.2 E-Signature Approvals
+### 11.2 E-Signature Approvals
 - Approving (or rejecting) a document issue request, and approving/rejecting an extension request, now includes a **signature pad** (draw with mouse/finger/stylus) directly in the browser.
 - **A signature is required to approve** — the button is blocked client-side and the server independently re-checks this, so it can't be bypassed by disabling JavaScript.
 - The captured signature (PNG) is stored against that specific approval record and displayed on the issue's detail page permanently as part of the audit trail.
 - Signing is optional when *rejecting* a request (a signature isn't needed to say no).
 
-### 6.3 Analytics Dashboard
+### 11.3 Analytics Dashboard
 - New **Analytics** page (visible to Admin, Director, and anyone with "Manage Jobs" or "Manage Documents" privilege) with seven charts:
   1. Jobs by phase & status
   2. Average time spent per stage (hours) — spot bottlenecks
@@ -265,7 +287,7 @@ application is completely unaffected.
   7. Documents by confidentiality level
 - Built with Chart.js (CDN, no extra build step) fed by live SQL aggregate queries — no manual report generation needed.
 
-### 6.4 WhatsApp Notifications (WhatsApp Web — no paid Business API)
+### 11.4 WhatsApp Notifications (WhatsApp Web — no paid Business API)
 - **Admin → WhatsApp Notifications** lets you connect a real WhatsApp account by scanning a QR code (exactly like linking a device to WhatsApp Web on a browser).
 - Once connected, every notification this system already sends by email (stage changes, approval requests, reminders, overdue alerts, Director escalations, extension decisions) is **also** sent as a WhatsApp message — but only to users who have a **WhatsApp Number** saved on their profile (`Admin → Users`).
 - **Please read the on-screen warning before enabling this.** In summary:
@@ -276,7 +298,7 @@ application is completely unaffected.
 
 **A note on testing:** everything else in this README describes features that were actually run and verified end-to-end (login, workflow stages, document issue/approval/extension, QR generation and scanning, e-signature enforcement, and the analytics queries). The WhatsApp module's code was written, syntax-checked, and its admin UI/status states (Disabled → Initializing → QR Pending → Ready → Error) were verified to render and toggle correctly — but the actual WhatsApp pairing step needs a real phone to scan the QR code, which isn't something that could be tested in this environment. Please test that specific step on your own server before relying on it.
 
-### 6.5 aaPanel Setup Notes for the New Add-Ons
+### 11.5 aaPanel Setup Notes for the New Add-Ons
 
 - **QR codes, e-signatures, analytics** — no extra server setup needed; they work as soon as you deploy normally (Steps 1–8 above still apply). Just re-run `npm install` since two new packages (`qrcode`, `whatsapp-web.js`) were added, and run `db/upgrade_addons.sql` once against your database if you'd already set it up before this update (a fresh `npm run seed` on a brand-new database already includes everything).
 - **WhatsApp** needs a headless Chromium browser on the server:
@@ -300,34 +322,136 @@ application is completely unaffected.
 ## 13. Project Structure
 
 ```
-trafo-dms-app/
-├── server.js                 # App entry point
+trafo-360/
+├── server.js                       # App entry point (also exports the Express app for tests)
 ├── package.json
-├── .env.example               # Copy to .env and fill in
+├── .env.example                    # Copy to .env and fill in
+├── .env.test.example                # Copy to .env.test for the test suite (disposable DB only)
+├── Dockerfile / docker-compose.yml  # Alternative deploy path - see §14
 ├── config/
-│   ├── db.js                  # MySQL connection pool
-│   └── mailer.js               # Dynamic SMTP (DB-configurable)
+│   ├── db.js                       # MySQL connection pool
+│   ├── mailer.js                    # Dynamic SMTP (DB-configurable)
+│   ├── logger.js                     # Structured (pino) logging
+│   └── csrf.js                        # CSRF double-submit-cookie config
 ├── db/
-│   ├── schema.sql              # All tables
-│   └── seed.sql                 # Default roles, 28 stages, categories, settings
+│   ├── schema.sql                  # All tables (source of truth for a fresh install)
+│   ├── seed.sql                     # Default roles, 28 stages, categories, GTP schema, document templates, settings
+│   └── upgrade_*.sql                 # Migrations for pre-existing installs - see §17
 ├── scripts/
-│   ├── seed.js                  # npm run seed
-│   └── createAdmin.js            # npm run create-admin
+│   ├── seed.js                      # npm run seed
+│   └── createAdmin.js                # npm run create-admin
 ├── middleware/
-│   ├── auth.js                    # Session auth + role/permission guards
-│   └── upload.js                   # Multer file upload config
+│   ├── auth.js                      # Session auth + role/permission guards
+│   ├── validate.js                   # express-validator result handler
+│   ├── upload.js                      # Multer config for confidential documents (private, outside public/)
+│   └── uploadLogo.js                   # Multer config for the public branding logo (inside public/)
 ├── utils/
 │   ├── workingDays.js               # Grace-period working-day math
 │   ├── notify.js                     # Workflow stage email + WhatsApp engine
 │   ├── documentNotify.js              # Document issue email + WhatsApp engine
-│   └── whatsapp.js                     # WhatsApp Web (unofficial) integration
+│   ├── whatsapp.js                     # WhatsApp Web (unofficial) integration
+│   ├── gtpSchema.js                     # Resolves the DB-driven GTP schema (replaces the old hardcoded version)
+│   ├── documentTypes.js                  # Technical-document type definitions + data gathering
+│   ├── documentGenerator.js               # Orchestrates PDF generation -> Document Library filing
+│   ├── pdfGenerator.js                     # EJS -> HTML -> PDF via a shared Puppeteer instance
+│   ├── documentAccess.js                    # Shared document-confidentiality check
+│   ├── jobStatus.js                          # Shared RAG/progress-% computation
+│   ├── dashboardWidgets.js                    # Dashboard widget registry
+│   └── safeRedirect.js                         # Open-redirect-safe replacement for redirect('back')
 ├── cron/
-│   └── scheduler.js                    # Daily reminder/escalation job
-├── routes/                               # auth, dashboard, jobs, orders, projectStatus, documents, issues, analytics, admin
-├── utils/gtpFields.js                      # Shared GTP parameter schema (form + work-order generation)
-├── views/                                 # EJS templates (Trafo Power branded)
-└── uploads/                                # Uploaded document scans (private, not in public/)
+│   └── scheduler.js                # Daily reminder/escalation job
+├── routes/                         # auth, search, dashboard, jobs, orders, projectStatus, documents,
+│                                    # issues, analytics, admin, gtpSchema, documentTemplates
+├── views/                          # EJS templates, including views/documents/generate/ (PDF layout)
+│                                    # and views/partials/widgets/ (dashboard widget partials)
+├── public/
+│   ├── css/style.css               # Design tokens, dark mode, all custom component styles
+│   ├── js/{csrf,theme}.js           # CSRF auto-injection, dark-mode toggle
+│   └── branding/                     # Uploaded company logo (public - not confidential)
+├── uploads/                        # Confidential document files (private, outside public/)
+└── tests/                          # Jest/Supertest suite - see §15
 ```
+
+## 14. Docker Deployment (Alternative to aaPanel)
+
+If you'd rather not manage Node/MySQL/PM2 directly, `docker-compose.yml` runs the whole stack
+(app + MySQL, with persistent volumes for the database, uploaded documents, and the branding logo):
+
+```bash
+cp .env.example .env        # fill in SESSION_SECRET, DB_ROOT_PASSWORD, SMTP_* at minimum
+docker compose up -d --build
+docker compose exec app npm run seed
+docker compose exec app npm run create-admin
+```
+
+The app will be on `http://localhost:3000` (or `$PORT`). Put a reverse proxy (nginx/Caddy) with a
+real TLS certificate in front of it for production, same as the aaPanel path's Step 7. The compose
+file's MySQL port is bound to `127.0.0.1` only (for local DB-GUI debugging) — it's not reachable from
+outside the host by default.
+
+**Note on this repository:** the sandbox this app was built in has neither Docker nor a usable local
+MySQL, so `docker compose up` itself has not been run end-to-end — the Dockerfile and compose file
+were reviewed carefully and the app was verified booting/serving traffic via `node server.js` directly
+against the same code paths, but please do a first real `docker compose up` yourself and report back
+if anything doesn't come up cleanly.
+
+## 15. Running the Test Suite
+
+```bash
+cp .env.test.example .env.test   # point DB_NAME etc. at a DISPOSABLE database, never production
+npm test
+```
+
+This runs Jest/Supertest against the real Express app and a real (disposable) MySQL database —
+login, job creation/advancement, orders/lots, document issue → approval, GTP schema admin CRUD,
+document generation (a real PDF is rendered per test), and dashboard widget customization. CI
+(`.github/workflows/ci.yml`) runs the same suite against a throwaway MySQL service container on every
+push. **This sandbox has neither Docker nor a usable local MySQL** (see §16), so while every test was
+written against the real route/DB logic and the harness itself was confirmed to wire up correctly
+(it fails with a clean connection error here, exactly as expected with no database), the suite has
+not actually been executed end-to-end. Please run `npm test` yourself before deploying.
+
+## 16. Verification Status
+
+Being upfront about what "tested" means for the work in this repository, since a lot of it was built
+without access to a running MySQL instance or Docker:
+
+- **Verified live, repeatedly, throughout development:** the app boots and serves real HTTP traffic
+  (every route in the app was hit with curl and returned the expected status code), all security
+  middleware (CSRF, rate limiting, CSP/security headers, the `SESSION_SECRET` fail-fast check) behaves
+  correctly under live requests including deliberate attack attempts (wrong/missing CSRF tokens,
+  disallowed file uploads), and the PDF generation pipeline (all 7 document layout types, including
+  the company logo) was rendered for real through Puppeteer and visually inspected. The transformer
+  build visualization was rendered and screenshotted across 9 progress states. The login page's
+  light/dark themes were screenshotted and a real dark-mode CSS bug was caught and fixed that way.
+- **Verified by static analysis:** every JavaScript file syntax-checks cleanly and every EJS template
+  compiles cleanly, on every commit in this project's history.
+- **Not yet verified (needs a real database):** the Jest suite's actual assertions (as opposed to its
+  wiring), and therefore anything that requires real data round-tripping through MySQL - workflow
+  stage advancement, order/lot creation, document issue approval, notification emails actually
+  sending, and the daily cron escalation job. These all worked in the original (pre-this-round) build
+  per the top of this README, and the code paths for the new work follow the exact same patterns, but
+  please run `npm test` and click through the app yourself against a real database before considering
+  any of Phases 1 through 7 (GTP schema, document generation, UI modernization, dashboard
+  customization, and the security-hardening commits) production-verified.
+
+## 17. Upgrading an Existing Install
+
+A **fresh** `npm run seed` already includes everything in this README - skip this section entirely
+for a new install. If you have an existing database from before this round of changes, run these
+once, in this order (each is idempotent-ish per its own comments, but back up your database first
+regardless):
+
+```bash
+mysql -u <user> -p <database> < db/upgrade_orders_lots.sql
+mysql -u <user> -p <database> < db/upgrade_project_status.sql
+mysql -u <user> -p <database> < db/upgrade_addons.sql
+mysql -u <user> -p <database> < db/upgrade_gtp_schema.sql
+mysql -u <user> -p <database> < db/upgrade_document_generation.sql
+mysql -u <user> -p <database> < db/upgrade_dashboard_widgets.sql
+```
+
+Then `npm install` (a few packages were added since the original build) and restart the app.
 
 ---
 
