@@ -118,6 +118,7 @@ app.use(require('./routes/documents'));
 app.use(require('./routes/issues'));
 app.use(require('./routes/analytics'));
 app.use(require('./routes/admin'));
+app.use(require('./routes/gtpSchema'));
 
 app.get('/', (req, res) => res.redirect(req.session.user ? '/dashboard' : '/login'));
 

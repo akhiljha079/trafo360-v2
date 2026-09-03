@@ -4,7 +4,7 @@ const pool = require('../config/db');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { notifyStageEvent } = require('../utils/notify');
-const { GTP_GROUPS, fieldsForStage } = require('../utils/gtpFields');
+const { getSchema, getActiveTransformerTypes, fieldsForStage } = require('../utils/gtpSchema');
 const router = express.Router();
 
 const orderFieldRules = [
@@ -17,9 +17,9 @@ const lotFieldRules = [
   body('quantity').isInt({ min: 1, max: 1000 }).withMessage('Quantity must be between 1 and 1000 units.')
 ];
 
-function parseGtp(body) {
+function parseGtp(body, schema) {
   const gtp = {};
-  GTP_GROUPS.forEach(g => g.fields.forEach(f => {
+  schema.forEach(g => g.fields.forEach(f => {
     if (body[`gtp_${f.key}`] !== undefined) gtp[f.key] = body[`gtp_${f.key}`];
   }));
   return gtp;
@@ -37,8 +37,11 @@ router.get('/orders', requireAuth, async (req, res) => {
 });
 
 // ---------------- NEW ORDER (with GTP form) ----------------
-router.get('/orders/new', requireAuth, requirePermission('can_manage_jobs'), (req, res) => {
-  res.render('orders/form', { title: 'New Order', order: null, gtpGroups: GTP_GROUPS, gtpData: {} });
+router.get('/orders/new', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+  const transformerTypes = await getActiveTransformerTypes();
+  const selectedType = req.query.transformer_type || (transformerTypes[0] && transformerTypes[0].name) || '';
+  const gtpGroups = await getSchema(selectedType);
+  res.render('orders/form', { title: 'New Order', order: null, transformerTypes, selectedType, gtpGroups, gtpData: {} });
 });
 
 router.post('/orders', requireAuth, requirePermission('can_manage_jobs'),
@@ -46,7 +49,8 @@ router.post('/orders', requireAuth, requirePermission('can_manage_jobs'),
   validate, async (req, res) => {
   const { order_no, customer_name, po_no, transformer_type, rating, total_quantity } = req.body;
   try {
-    const gtp = parseGtp(req.body);
+    const schema = await getSchema(transformer_type);
+    const gtp = parseGtp(req.body, schema);
     const [result] = await pool.query(
       `INSERT INTO orders (order_no, customer_name, po_no, transformer_type, rating, total_quantity, gtp_json, created_by)
        VALUES (?,?,?,?,?,?,?,?)`,
@@ -67,13 +71,17 @@ router.get('/orders/:id/edit', requireAuth, requirePermission('can_manage_jobs')
   if (!order) { req.flash('error', 'Order not found.'); return res.redirect('/orders'); }
   let gtpData = {};
   try { gtpData = JSON.parse(order.gtp_json || '{}'); } catch (e) { /* ignore malformed */ }
-  res.render('orders/form', { title: `Edit ${order.order_no}`, order, gtpGroups: GTP_GROUPS, gtpData });
+  const transformerTypes = await getActiveTransformerTypes();
+  const selectedType = req.query.transformer_type || order.transformer_type;
+  const gtpGroups = await getSchema(selectedType);
+  res.render('orders/form', { title: `Edit ${order.order_no}`, order, transformerTypes, selectedType, gtpGroups, gtpData });
 });
 
 router.post('/orders/:id/edit', requireAuth, requirePermission('can_manage_jobs'), orderFieldRules, validate, async (req, res) => {
   const { customer_name, po_no, transformer_type, rating, total_quantity } = req.body;
   try {
-    const gtp = parseGtp(req.body);
+    const schema = await getSchema(transformer_type);
+    const gtp = parseGtp(req.body, schema);
     await pool.query(
       `UPDATE orders SET customer_name=?, po_no=?, transformer_type=?, rating=?, total_quantity=?, gtp_json=? WHERE id=?`,
       [customer_name, po_no || null, transformer_type, rating || null, total_quantity || 1, JSON.stringify(gtp), req.params.id]
@@ -107,6 +115,7 @@ router.get('/orders/:id', requireAuth, async (req, res) => {
   if (!order) { req.flash('error', 'Order not found.'); return res.redirect('/orders'); }
   let gtpData = {};
   try { gtpData = JSON.parse(order.gtp_json || '{}'); } catch (e) { /* ignore */ }
+  const gtpGroups = await getSchema(order.transformer_type);
 
   const [lots] = await pool.query(`
     SELECT l.*,
@@ -120,7 +129,7 @@ router.get('/orders/:id', requireAuth, async (req, res) => {
   // Manufacturing-phase stages, for the "generate work order" quick links
   const [mfgStages] = await pool.query(`SELECT * FROM stages WHERE phase='Manufacturing' AND is_active=1 ORDER BY sequence_order ASC`);
 
-  res.render('orders/view', { title: order.order_no, order, gtpData, gtpGroups: GTP_GROUPS, lots, nextLotNo, allocatedQty, mfgStages });
+  res.render('orders/view', { title: order.order_no, order, gtpData, gtpGroups, lots, nextLotNo, allocatedQty, mfgStages });
 });
 
 // ---------------- ADD LOT (auto-creates the unit/job records) ----------------
@@ -233,7 +242,8 @@ router.get('/orders/:id/work-order/:stageCode', requireAuth, async (req, res) =>
 
   let gtpData = {};
   try { gtpData = JSON.parse(order.gtp_json || '{}'); } catch (e) { /* ignore */ }
-  const fields = fieldsForStage(req.params.stageCode, gtpData);
+  const schema = await getSchema(order.transformer_type);
+  const fields = fieldsForStage(req.params.stageCode, gtpData, schema);
 
   const lotId = req.query.lot_id || null;
   let lot = null, units = [];

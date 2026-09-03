@@ -127,8 +127,13 @@ For orders manufactured in batches (e.g. "50 x 10MVA transformers, released in l
 
 - **Create an Order** once, with the customer, PO, total quantity, and a structured **GTP (General
   Technical Particulars)** form — rated power, voltages, vector group, impedance, core/winding
-  materials, tap changer details, insulation levels, tank/oil specs, and more (~35 fields across 9
-  groups). This is the single design that every unit in the order shares.
+  materials, tap changer details, insulation levels, tank/oil specs, and more (ships with ~35 fields
+  across 9 groups). This is the single design that every unit in the order shares. Unlike earlier
+  builds, the GTP schema itself is **not hardcoded** — `Admin → GTP Schema` lets you add, edit,
+  reorder, or disable transformer types, field groups, and individual fields (including which
+  department work orders/documents each field appears on) entirely from the front end, optionally
+  scoped to a specific transformer type. If you're upgrading an existing install, run
+  `db/upgrade_gtp_schema.sql` once (a fresh `npm run seed` already includes everything).
 - **Add Lots** against the order as manufacturing releases happen — e.g. Lot 1 = 10 units, Lot 2 = 10
   units, and so on, whatever pattern your production planning uses. Adding a lot **automatically
   creates one Job per unit** (e.g. `ORD-2026-014-L1-U01` through `U10`), each starting at the first

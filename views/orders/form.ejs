@@ -21,11 +21,13 @@
         </div>
         <div class="col-md-4">
           <label class="form-label">Transformer Type *</label>
-          <select name="transformer_type" class="form-select" required>
-            <% ['Power Transformer','Distribution Transformer','IDT (Interconnecting/Auto)','Special Purpose'].forEach(function(t) { %>
-              <option value="<%= t %>" <%= order && order.transformer_type===t ? 'selected' : '' %>><%= t %></option>
+          <select name="transformer_type" class="form-select" required
+            onchange="if(confirm('Switch transformer type? This reloads the page and any unsaved changes on this form will be lost.')) location.href = '<%= order ? '/orders/' + order.id + '/edit' : '/orders/new' %>?transformer_type=' + encodeURIComponent(this.value); else this.value='<%= selectedType %>';">
+            <% transformerTypes.forEach(function(t) { %>
+              <option value="<%= t.name %>" <%= selectedType===t.name ? 'selected' : '' %>><%= t.name %></option>
             <% }); %>
           </select>
+          <div class="form-text">Changing this reloads the GTP fields relevant to that type. <a href="/admin/gtp-schema">Manage types & fields</a></div>
         </div>
         <div class="col-md-4">
           <label class="form-label">Rating</label>
@@ -52,6 +54,15 @@
               <label class="form-label small mb-1"><%= f.label %><% if (f.unit) { %> <span class="text-muted">(<%= f.unit %>)</span><% } %></label>
               <% if (f.type === 'textarea') { %>
                 <textarea name="gtp_<%= f.key %>" class="form-control form-control-sm" rows="2"><%= gtpData[f.key] || '' %></textarea>
+              <% } else if (f.type === 'select') { %>
+                <select name="gtp_<%= f.key %>" class="form-select form-select-sm">
+                  <option value="">-</option>
+                  <% (f.options || []).forEach(function(opt) { %>
+                    <option value="<%= opt %>" <%= gtpData[f.key]===opt ? 'selected' : '' %>><%= opt %></option>
+                  <% }); %>
+                </select>
+              <% } else if (f.type === 'number') { %>
+                <input type="number" step="any" name="gtp_<%= f.key %>" class="form-control form-control-sm" value="<%= gtpData[f.key] || '' %>">
               <% } else { %>
                 <input type="text" name="gtp_<%= f.key %>" class="form-control form-control-sm" value="<%= gtpData[f.key] || '' %>">
               <% } %>

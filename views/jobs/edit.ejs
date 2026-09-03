@@ -22,8 +22,8 @@
         <div class="col-md-3">
           <label class="form-label">Transformer Type *</label>
           <select name="transformer_type" class="form-select" required>
-            <% ['Power Transformer','Distribution Transformer','IDT (Interconnecting/Auto)','Special Purpose'].forEach(function(t) { %>
-              <option value="<%= t %>" <%= job.transformer_type===t ? 'selected' : '' %>><%= t %></option>
+            <% transformerTypes.forEach(function(t) { %>
+              <option value="<%= t.name %>" <%= job.transformer_type===t.name ? 'selected' : '' %>><%= t.name %></option>
             <% }); %>
           </select>
         </div>

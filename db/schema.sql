@@ -59,6 +59,51 @@ CREATE TABLE IF NOT EXISTS stages (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------
+-- TRANSFORMER TYPES  (admin-customizable - was a fixed 4-value ENUM;
+-- orders/jobs.transformer_type now just stores the name as free text so
+-- adding a new type here never requires a migration)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS transformer_types (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  sequence_order INT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- GTP FIELD GROUPS / FIELDS  (admin-customizable GTP schema - was a
+-- hardcoded constant in utils/gtpFields.js. A group/field with
+-- transformer_type_id=NULL applies to every transformer type; otherwise
+-- it's scoped to just that type. Field values are still stored per-order
+-- as flat JSON in orders.gtp_json (unchanged), keyed by field_key.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gtp_field_groups (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  transformer_type_id INT DEFAULT NULL COMMENT 'NULL = applies to all transformer types',
+  name VARCHAR(120) NOT NULL,
+  sequence_order INT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (transformer_type_id) REFERENCES transformer_types(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS gtp_fields (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  group_id INT NOT NULL,
+  field_key VARCHAR(80) NOT NULL UNIQUE COMMENT 'Used as the JSON key in orders.gtp_json and as the gtp_<key> form field name',
+  label VARCHAR(150) NOT NULL,
+  unit VARCHAR(60) DEFAULT NULL,
+  field_type ENUM('text','textarea','number','select') NOT NULL DEFAULT 'text',
+  select_options VARCHAR(500) DEFAULT NULL COMMENT 'Comma-separated options, only used when field_type=select',
+  stage_codes VARCHAR(255) DEFAULT NULL COMMENT 'Comma-separated stage_code list this field appears on in generated work orders/documents',
+  sequence_order INT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (group_id) REFERENCES gtp_field_groups(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
 -- ORDERS  (a customer order, e.g. "50 x 10MVA transformers" - one GTP/design)
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS orders (
@@ -66,7 +111,7 @@ CREATE TABLE IF NOT EXISTS orders (
   order_no VARCHAR(60) NOT NULL UNIQUE,
   customer_name VARCHAR(150) NOT NULL,
   po_no VARCHAR(80) DEFAULT NULL,
-  transformer_type ENUM('Power Transformer','Distribution Transformer','IDT (Interconnecting/Auto)','Special Purpose') NOT NULL,
+  transformer_type VARCHAR(100) NOT NULL COMMENT 'Free text matching a transformer_types.name - see Admin > Transformer Types',
   rating VARCHAR(100) DEFAULT NULL,
   total_quantity INT NOT NULL DEFAULT 1,
   gtp_json LONGTEXT DEFAULT NULL COMMENT 'Structured GTP / technical parameters, stored as JSON for flexibility across transformer types',
@@ -108,7 +153,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   job_no VARCHAR(60) NOT NULL UNIQUE,
   po_no VARCHAR(80) DEFAULT NULL,
   customer_name VARCHAR(150) NOT NULL,
-  transformer_type ENUM('Power Transformer','Distribution Transformer','IDT (Interconnecting/Auto)','Special Purpose') NOT NULL,
+  transformer_type VARCHAR(100) NOT NULL COMMENT 'Free text matching a transformer_types.name - see Admin > Transformer Types',
   rating VARCHAR(100) DEFAULT NULL,
   serial_no VARCHAR(80) DEFAULT NULL,
   target_dispatch_date DATE DEFAULT NULL COMMENT 'Planned dispatch date, used to compute on-track/at-risk/delayed status',

@@ -58,6 +58,81 @@ INSERT INTO stages (stage_code, stage_name, phase, sequence_order, owner_role_id
 ('D7','Final Documents Handed to Customer','Dispatch',28,(SELECT id FROM roles WHERE name='Documents Coordinator'),'Complete document package issued to customer - order closed');
 
 -- ---------------------------------------------------------------------
+-- TRANSFORMER TYPES  (was a fixed ENUM; now admin-customizable)
+-- ---------------------------------------------------------------------
+INSERT INTO transformer_types (name, sequence_order) VALUES
+('Power Transformer', 1),
+('Distribution Transformer', 2),
+('IDT (Interconnecting/Auto)', 3),
+('Special Purpose', 4);
+
+-- ---------------------------------------------------------------------
+-- GTP FIELD GROUPS & FIELDS  (was the hardcoded GTP_GROUPS constant in
+-- utils/gtpFields.js; transformer_type_id NULL = applies to every type,
+-- matching the single shared schema every type used before this change)
+-- ---------------------------------------------------------------------
+INSERT INTO gtp_field_groups (id, transformer_type_id, name, sequence_order) VALUES
+(1, NULL, 'General', 1),
+(2, NULL, 'Voltage & Ratios', 2),
+(3, NULL, 'Losses & Impedance', 3),
+(4, NULL, 'Core', 4),
+(5, NULL, 'Windings', 5),
+(6, NULL, 'Tap Changer', 6),
+(7, NULL, 'Insulation', 7),
+(8, NULL, 'Tank & Oil', 8),
+(9, NULL, 'Bushings & Accessories', 9);
+
+INSERT INTO gtp_fields (group_id, field_key, label, unit, field_type, stage_codes, sequence_order) VALUES
+-- General
+(1, 'rated_power', 'Rated Power', 'kVA/MVA', 'text', 'M1', 1),
+(1, 'frequency', 'Frequency', 'Hz', 'text', 'M1', 2),
+(1, 'phases', 'No. of Phases', NULL, 'text', 'M1', 3),
+(1, 'standard', 'Applicable Standard', 'e.g. IS 2026 / IEC 60076', 'text', 'M1', 4),
+(1, 'cooling_type', 'Type of Cooling', 'ONAN / ONAF / OFAF / ODAF', 'text', 'M1,M6', 5),
+(1, 'installation', 'Installation', 'Indoor / Outdoor', 'text', 'M1', 6),
+(1, 'vector_group', 'Vector Group', NULL, 'text', 'M1,M4,M5', 7),
+-- Voltage & Ratios
+(2, 'hv_voltage', 'HV Voltage', 'kV', 'text', 'M1,M4', 1),
+(2, 'lv_voltage', 'LV Voltage', 'kV', 'text', 'M1,M4', 2),
+(2, 'tertiary_voltage', 'Tertiary Voltage (if any)', 'kV', 'text', 'M1,M4', 3),
+(2, 'voltage_variation', 'Voltage Variation Range', '%', 'text', 'M1,M4', 4),
+-- Losses & Impedance
+(3, 'no_load_loss_kw', 'No-Load Loss', 'kW', 'text', 'M1,M3,M10', 1),
+(3, 'load_loss_kw', 'Load Loss', 'kW', 'text', 'M1,M4,M10', 2),
+(3, 'impedance_pct', 'Impedance', '%', 'text', 'M1,M4,M10', 3),
+(3, 'temp_rise_oil', 'Temperature Rise - Oil', '°C', 'text', 'M1,M8,M10', 4),
+(3, 'temp_rise_winding', 'Temperature Rise - Winding', '°C', 'text', 'M1,M8,M10', 5),
+-- Core
+(4, 'core_material', 'Core Material / Grade', 'e.g. CRGO M4', 'text', 'M1,M3', 1),
+(4, 'core_type', 'Core Type', 'Core / Shell', 'text', 'M1,M3', 2),
+(4, 'flux_density', 'Flux Density', 'Tesla', 'text', 'M1,M3', 3),
+(4, 'core_weight_kg', 'Core Weight', 'kg', 'text', 'M1,M3', 4),
+-- Windings
+(5, 'hv_winding_material', 'HV Winding Material', 'Cu / Al', 'text', 'M1,M4', 1),
+(5, 'lv_winding_material', 'LV Winding Material', 'Cu / Al', 'text', 'M1,M4', 2),
+(5, 'winding_type', 'Winding Type', 'Disc / Helical / Layer', 'text', 'M1,M4', 3),
+(5, 'current_density', 'Current Density', 'A/mm²', 'text', 'M1,M4', 4),
+-- Tap Changer
+(6, 'tap_changer_type', 'Tap Changer Type', 'OLTC / OCTC', 'text', 'M1,M4,M5', 1),
+(6, 'tap_range', 'Tap Range', '%', 'text', 'M1,M4,M5', 2),
+(6, 'tap_steps', 'Number of Tap Steps', NULL, 'text', 'M1,M4,M5', 3),
+-- Insulation
+(7, 'bil_hv', 'BIL - HV', 'kV', 'text', 'M1,M5,M10', 1),
+(7, 'bil_lv', 'BIL - LV', 'kV', 'text', 'M1,M5,M10', 2),
+(7, 'insulation_class', 'Insulation Class', NULL, 'text', 'M1,M5,M8', 3),
+-- Tank & Oil
+(8, 'tank_type', 'Tank Type', 'e.g. Corrugated / Plain with Radiators', 'text', 'M1,M6', 1),
+(8, 'oil_type', 'Oil Type', 'e.g. Mineral / Synthetic Ester', 'text', 'M1,M9', 2),
+(8, 'oil_quantity_l', 'Total Oil Quantity', 'Litres', 'text', 'M1,M9', 3),
+(8, 'untanked_weight_kg', 'Untanked Weight', 'kg', 'text', 'M1,M6', 4),
+(8, 'total_weight_kg', 'Total Weight (Tanked)', 'kg', 'text', 'M1,M6', 5),
+-- Bushings & Accessories
+(9, 'hv_bushing', 'HV Bushing Type & Rating', NULL, 'text', 'M1,M5', 1),
+(9, 'lv_bushing', 'LV Bushing Type & Rating', NULL, 'text', 'M1,M5', 2),
+(9, 'paint_shade', 'Paint Shade', 'e.g. RAL 7032', 'text', 'M1,M7', 3),
+(9, 'fittings', 'Standard Fittings / Accessories', NULL, 'textarea', 'M1,M6', 4);
+
+-- ---------------------------------------------------------------------
 -- DOCUMENT CATEGORIES
 -- ---------------------------------------------------------------------
 INSERT INTO document_categories (name) VALUES

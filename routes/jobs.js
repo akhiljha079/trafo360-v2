@@ -6,6 +6,7 @@ const pool = require('../config/db');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { notifyStageEvent } = require('../utils/notify');
+const { getActiveTransformerTypes } = require('../utils/gtpSchema');
 const upload = require('../middleware/upload');
 const router = express.Router();
 
@@ -34,7 +35,8 @@ router.get('/jobs', requireAuth, async (req, res) => {
 // NEW (form) - for a standalone job not created via the Orders/Lots module
 router.get('/jobs/new', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
   const [firstStage] = await pool.query('SELECT * FROM stages WHERE is_active=1 ORDER BY sequence_order ASC LIMIT 1');
-  res.render('jobs/new', { title: 'New Transformer Job', firstStage: firstStage[0] });
+  const transformerTypes = await getActiveTransformerTypes();
+  res.render('jobs/new', { title: 'New Transformer Job', firstStage: firstStage[0], transformerTypes });
 });
 
 // CREATE
@@ -69,7 +71,8 @@ router.post('/jobs', requireAuth, requirePermission('can_manage_jobs'),
 router.get('/jobs/:id/edit', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
   const [[job]] = await pool.query('SELECT * FROM jobs WHERE id=? AND is_deleted=0', [req.params.id]);
   if (!job) { req.flash('error', 'Job not found.'); return res.redirect('/jobs'); }
-  res.render('jobs/edit', { title: `Edit ${job.job_no}`, job });
+  const transformerTypes = await getActiveTransformerTypes();
+  res.render('jobs/edit', { title: `Edit ${job.job_no}`, job, transformerTypes });
 });
 
 // UPDATE

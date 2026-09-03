@@ -22,10 +22,7 @@
         <div class="col-md-3">
           <label class="form-label">Transformer Type *</label>
           <select name="transformer_type" class="form-select" required>
-            <option value="Power Transformer">Power Transformer</option>
-            <option value="Distribution Transformer">Distribution Transformer</option>
-            <option value="IDT (Interconnecting/Auto)">IDT (Interconnecting/Auto)</option>
-            <option value="Special Purpose">Special Purpose</option>
+            <% transformerTypes.forEach(function(t) { %><option value="<%= t.name %>"><%= t.name %></option><% }); %>
           </select>
         </div>
         <div class="col-md-3">
