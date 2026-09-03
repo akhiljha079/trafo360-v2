@@ -1,0 +1,15 @@
+<div class="card mb-3">
+  <div class="card-header">Pending Approvals (<%= pendingApprovals %>)</div>
+  <div class="card-body">
+    <% if (pendingApprovalList.length === 0) { %><p class="text-muted mb-0">No pending approvals.</p><% } %>
+    <% pendingApprovalList.forEach(function(p) { %>
+      <div class="d-flex justify-content-between border-bottom py-2">
+        <div>
+          <div class="fw-bold"><%= p.doc_code %></div>
+          <div class="small text-muted">Requested by <%= p.requester_name %></div>
+        </div>
+        <a href="/issues/<%= p.id %>" class="btn btn-sm btn-warning">Review</a>
+      </div>
+    <% }); %>
+  </div>
+</div>

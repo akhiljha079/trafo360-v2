@@ -395,4 +395,20 @@ CREATE TABLE IF NOT EXISTS system_settings (
   setting_value TEXT DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ---------------------------------------------------------------------
+-- USER DASHBOARD WIDGETS  (per-user show/hide + order for dashboard
+-- sections - see utils/dashboardWidgets.js for the registry. A user with no
+-- rows here just sees every widget they have permission for, in the
+-- registry's default order.)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_dashboard_widgets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  widget_key VARCHAR(60) NOT NULL,
+  is_visible TINYINT(1) NOT NULL DEFAULT 1,
+  sequence_order INT NOT NULL DEFAULT 0,
+  UNIQUE KEY uniq_user_widget (user_id, widget_key),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET FOREIGN_KEY_CHECKS = 1;

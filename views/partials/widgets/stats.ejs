@@ -1,0 +1,26 @@
+<div class="row g-3 mb-3">
+  <div class="col-md-3 col-6">
+    <div class="card p-3">
+      <div class="text-muted small">Active Jobs</div>
+      <div class="fs-3 fw-bold text-primary"><%= activeJobs %></div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card p-3">
+      <div class="text-muted small">Completed Jobs</div>
+      <div class="fs-3 fw-bold text-success"><%= completedJobs %></div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card p-3">
+      <div class="text-muted small">Documents Issued</div>
+      <div class="fs-3 fw-bold" style="color:#2E75B6;"><%= issuedDocs %></div>
+    </div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card p-3">
+      <div class="text-muted small">Overdue / Escalated Docs</div>
+      <div class="fs-3 fw-bold text-danger"><%= overdueDocs %></div>
+    </div>
+  </div>
+</div>

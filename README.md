@@ -212,6 +212,19 @@ RAG-coded (Red/Amber/Green) view of every transformer job:
 
 This sits alongside (not instead of) the Analytics dashboard — Analytics looks backward at trends and averages, Project Status looks forward at what's at risk right now.
 
+Every job's progress is also shown as a small animated **transformer build illustration** (core →
+windings → tank → radiators/bushings → oil → dispatch straps, matching the real manufacturing
+sequence) with a glow ring reflecting its RAG status — used on the job detail page, Project Status,
+and the dashboard's recent-jobs list.
+
+### 9.1 Dashboard Customization
+
+**Customize Dashboard** (top of the Dashboard) lets each user show/hide and reorder their own
+dashboard widgets (summary stats, active jobs by phase, recently updated jobs, my issued documents,
+pending approvals) — purely personal, doesn't affect what anyone else sees. If you're upgrading an
+existing install, run `db/upgrade_dashboard_widgets.sql` once (a fresh `npm run seed` already
+includes everything).
+
 ## 10. Branding & Modern UI
 
 The interface carries real Trafo Power & Electricals identity pulled from trafopower.com:

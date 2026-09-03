@@ -1,0 +1,20 @@
+<div class="card mb-3">
+  <div class="card-header">Recently Updated Jobs</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Build</th><th>Job No.</th><th>Customer</th><th>Type</th><th>Stage</th><th></th></tr></thead>
+      <tbody>
+      <% recentJobs.forEach(function(j) { %>
+        <tr>
+          <td><%- include('../transformer-status', { pct: j.progressPct, phase: j.phase, rag: j.rag, size: 'sm' }) %></td>
+          <td><%= j.job_no %></td>
+          <td><%= j.customer_name %></td>
+          <td><%= j.transformer_type %></td>
+          <td><span class="badge badge-phase-<%= j.phase %>"><%= j.stage_name || 'N/A' %></span></td>
+          <td><a href="/jobs/<%= j.id %>" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>

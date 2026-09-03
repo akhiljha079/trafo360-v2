@@ -2,7 +2,19 @@ const express = require('express');
 const pool = require('../config/db');
 const { requireAuth } = require('../middleware/auth');
 const { computeRag, computeProgressPct } = require('../utils/jobStatus');
+const { WIDGET_REGISTRY, resolveWidgets } = require('../utils/dashboardWidgets');
 const router = express.Router();
+
+// Ensures every registry widget has a row for this user (default order/
+// visibility) so reordering has something concrete to swap between.
+async function ensureWidgetRows(userId) {
+  for (let i = 0; i < WIDGET_REGISTRY.length; i++) {
+    await pool.query(
+      `INSERT IGNORE INTO user_dashboard_widgets (user_id, widget_key, is_visible, sequence_order) VALUES (?,?,1,?)`,
+      [userId, WIDGET_REGISTRY[i].key, i * 10]
+    );
+  }
+}
 
 router.get('/dashboard', requireAuth, async (req, res) => {
   const [[{ activeJobs }]] = await pool.query(`SELECT COUNT(*) AS activeJobs FROM jobs WHERE status='Active' AND is_deleted=0`);
@@ -38,11 +50,53 @@ router.get('/dashboard', requireAuth, async (req, res) => {
     );
   }
 
+  const [savedWidgetRows] = await pool.query(
+    'SELECT * FROM user_dashboard_widgets WHERE user_id=?', [req.session.user.id]
+  );
+  const allWidgetPrefs = resolveWidgets(req.session.user, savedWidgetRows);
+  const widgets = allWidgetPrefs.filter(w => w.isVisible);
+
   res.render('dashboard', {
     title: 'Dashboard',
     activeJobs, completedJobs, jobsByPhase, recentJobs,
-    issuedDocs, overdueDocs, pendingApprovals, myIssues, pendingApprovalList
+    issuedDocs, overdueDocs, pendingApprovals, myIssues, pendingApprovalList,
+    widgets, allWidgetPrefs
   });
+});
+
+// ---------------- DASHBOARD WIDGET CUSTOMIZATION (per-user) ----------------
+router.post('/dashboard/widgets/:key/toggle', requireAuth, async (req, res) => {
+  const userId = req.session.user.id;
+  const key = req.params.key;
+  if (!WIDGET_REGISTRY.some(w => w.key === key)) { return res.redirect('/dashboard'); }
+  await ensureWidgetRows(userId);
+  await pool.query(
+    `UPDATE user_dashboard_widgets SET is_visible = NOT is_visible WHERE user_id=? AND widget_key=?`,
+    [userId, key]
+  );
+  res.redirect('/dashboard');
+});
+
+router.post('/dashboard/widgets/:key/reorder', requireAuth, async (req, res) => {
+  const userId = req.session.user.id;
+  const key = req.params.key;
+  const { direction } = req.body; // 'up' | 'down'
+  if (!WIDGET_REGISTRY.some(w => w.key === key)) { return res.redirect('/dashboard'); }
+  await ensureWidgetRows(userId);
+
+  const [[widget]] = await pool.query(
+    'SELECT * FROM user_dashboard_widgets WHERE user_id=? AND widget_key=?', [userId, key]
+  );
+  const [[neighbour]] = await pool.query(
+    `SELECT * FROM user_dashboard_widgets WHERE user_id=? AND sequence_order ${direction === 'up' ? '<' : '>'} ?
+     ORDER BY sequence_order ${direction === 'up' ? 'DESC' : 'ASC'} LIMIT 1`,
+    [userId, widget.sequence_order]
+  );
+  if (neighbour) {
+    await pool.query('UPDATE user_dashboard_widgets SET sequence_order=? WHERE id=?', [neighbour.sequence_order, widget.id]);
+    await pool.query('UPDATE user_dashboard_widgets SET sequence_order=? WHERE id=?', [widget.sequence_order, neighbour.id]);
+  }
+  res.redirect('/dashboard');
 });
 
 module.exports = router;
