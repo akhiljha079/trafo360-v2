@@ -21,15 +21,14 @@ end to end, with almost everything reconfigurable from the Admin UI rather than 
 5. **Modern, themeable UI** — dark mode, a live transformer-build visualization tied to real stage
    progress, per-user dashboard customization, validated-palette analytics charts, and global search.
 6. **Production hardening** — CSRF protection, rate limiting, a MySQL-backed session store, structured
-   logging, a Docker deployment path alongside the original aaPanel one, and a Jest/Supertest test
-   suite.
+   logging, and a Docker deployment path alongside the primary aaPanel one.
 
 The core workflow/document-management modules were built, installed, and functionally tested
 end-to-end (login, job creation, stage advancement with live email-log auditing, document upload,
 issue → approval → extension → extension-approval, role-based access control, and the daily cron
 escalation logic). Everything added since is documented per-section below, including what's been
 verified and how, and what still needs a real deployment to confirm — see
-**§16 Verification Status** before relying on anything without checking it yourself first.
+**§15 Verification Status** before relying on anything without checking it yourself first.
 
 ---
 
@@ -323,10 +322,9 @@ application is completely unaffected.
 
 ```
 trafo-360/
-├── server.js                       # App entry point (also exports the Express app for tests)
+├── server.js                       # App entry point
 ├── package.json
 ├── .env.example                    # Copy to .env and fill in
-├── .env.test.example                # Copy to .env.test for the test suite (disposable DB only)
 ├── Dockerfile / docker-compose.yml  # Alternative deploy path - see §14
 ├── config/
 │   ├── db.js                       # MySQL connection pool
@@ -336,7 +334,7 @@ trafo-360/
 ├── db/
 │   ├── schema.sql                  # All tables (source of truth for a fresh install)
 │   ├── seed.sql                     # Default roles, 28 stages, categories, GTP schema, document templates, settings
-│   └── upgrade_*.sql                 # Migrations for pre-existing installs - see §17
+│   └── upgrade_*.sql                 # Migrations for pre-existing installs - see §16
 ├── scripts/
 │   ├── seed.js                      # npm run seed
 │   └── createAdmin.js                # npm run create-admin
@@ -368,8 +366,7 @@ trafo-360/
 │   ├── css/style.css               # Design tokens, dark mode, all custom component styles
 │   ├── js/{csrf,theme}.js           # CSRF auto-injection, dark-mode toggle
 │   └── branding/                     # Uploaded company logo (public - not confidential)
-├── uploads/                        # Confidential document files (private, outside public/)
-└── tests/                          # Jest/Supertest suite - see §15
+└── uploads/                        # Confidential document files (private, outside public/)
 ```
 
 ## 14. Docker Deployment (Alternative to aaPanel)
@@ -387,7 +384,9 @@ docker compose exec app npm run create-admin
 The app will be on `http://localhost:3000` (or `$PORT`). Put a reverse proxy (nginx/Caddy) with a
 real TLS certificate in front of it for production, same as the aaPanel path's Step 7. The compose
 file's MySQL port is bound to `127.0.0.1` only (for local DB-GUI debugging) — it's not reachable from
-outside the host by default.
+outside the host by default. This path is optional — the primary, verified deployment path is aaPanel
+(§2); keep this only if you might want a containerized deploy later, otherwise `Dockerfile`,
+`docker-compose.yml`, and `.dockerignore` are safe to delete.
 
 **Note on this repository:** the sandbox this app was built in has neither Docker nor a usable local
 MySQL, so `docker compose up` itself has not been run end-to-end — the Dockerfile and compose file
@@ -395,23 +394,7 @@ were reviewed carefully and the app was verified booting/serving traffic via `no
 against the same code paths, but please do a first real `docker compose up` yourself and report back
 if anything doesn't come up cleanly.
 
-## 15. Running the Test Suite
-
-```bash
-cp .env.test.example .env.test   # point DB_NAME etc. at a DISPOSABLE database, never production
-npm test
-```
-
-This runs Jest/Supertest against the real Express app and a real (disposable) MySQL database —
-login, job creation/advancement, orders/lots, document issue → approval, GTP schema admin CRUD,
-document generation (a real PDF is rendered per test), and dashboard widget customization. CI
-(`.github/workflows/ci.yml`) runs the same suite against a throwaway MySQL service container on every
-push. **This sandbox has neither Docker nor a usable local MySQL** (see §16), so while every test was
-written against the real route/DB logic and the harness itself was confirmed to wire up correctly
-(it fails with a clean connection error here, exactly as expected with no database), the suite has
-not actually been executed end-to-end. Please run `npm test` yourself before deploying.
-
-## 16. Verification Status
+## 15. Verification Status
 
 Being upfront about what "tested" means for the work in this repository, since a lot of it was built
 without access to a running MySQL instance or Docker:
@@ -426,16 +409,17 @@ without access to a running MySQL instance or Docker:
   light/dark themes were screenshotted and a real dark-mode CSS bug was caught and fixed that way.
 - **Verified by static analysis:** every JavaScript file syntax-checks cleanly and every EJS template
   compiles cleanly, on every commit in this project's history.
-- **Not yet verified (needs a real database):** the Jest suite's actual assertions (as opposed to its
-  wiring), and therefore anything that requires real data round-tripping through MySQL - workflow
-  stage advancement, order/lot creation, document issue approval, notification emails actually
-  sending, and the daily cron escalation job. These all worked in the original (pre-this-round) build
-  per the top of this README, and the code paths for the new work follow the exact same patterns, but
-  please run `npm test` and click through the app yourself against a real database before considering
-  any of Phases 1 through 7 (GTP schema, document generation, UI modernization, dashboard
-  customization, and the security-hardening commits) production-verified.
+- **Not yet verified (needs a real database):** anything that requires real data round-tripping
+  through MySQL - workflow stage advancement, order/lot creation, document issue approval,
+  notification emails actually sending, and the daily cron escalation job. These all worked in the
+  original (pre-this-round) build per the top of this README, and the code paths for the new work
+  follow the exact same patterns, but please click through the app yourself against a real database
+  before considering any of Phases 1 through 7 (GTP schema, document generation, UI modernization,
+  dashboard customization, and the security-hardening commits) production-verified. (This project
+  previously carried a Jest/Supertest test suite covering these flows; it was removed to keep the
+  deployed package lean — `git log` has it if you want it back.)
 
-## 17. Upgrading an Existing Install
+## 16. Upgrading an Existing Install
 
 A **fresh** `npm run seed` already includes everything in this README - skip this section entirely
 for a new install. If you have an existing database from before this round of changes, run these
