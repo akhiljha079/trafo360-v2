@@ -145,7 +145,25 @@ INSERT INTO document_categories (name) VALUES
 ('Dispatch & Logistics'),
 ('Financial / Commercial'),
 ('HR & Administrative'),
-('General / Miscellaneous');
+('General / Miscellaneous'),
+('System-Generated Documents');
+
+-- ---------------------------------------------------------------------
+-- DOCUMENT TEMPLATES  (settings for the technical-document generation
+-- engine - see utils/documentTypes.js for the matching body/layout logic)
+-- ---------------------------------------------------------------------
+INSERT INTO document_templates (doc_type, name, numbering_prefix, source_stage_codes, intro_text) VALUES
+('routine_test_report', 'Routine Test Report', 'RTR', 'M10', 'Routine electrical tests performed in accordance with the applicable standard prior to dispatch. Measured values to be filled in by QA/Testing.'),
+('type_test_certificate', 'Type Test Certificate', 'TTC', 'M11', 'Type/special tests performed on a representative unit of this design, in accordance with the applicable standard.'),
+('qap', 'Quality Assurance Plan', 'QAP', 'M1,M2,M3,M4,M5,M6,M7,M8,M9,M10,M11,M12,M13', 'Quality assurance / inspection plan for this order, listing the inspection and documentation requirement at each manufacturing stage.'),
+('inspection_call_notice', 'Inspection Call Notice', 'ICN', 'M13', 'Notice inviting the customer / third-party inspection agency to witness final inspection prior to dispatch.'),
+('packing_list', 'Packing List', 'PL', 'D1', 'Packing list for the unit(s) covered by this document.'),
+('dispatch_clearance', 'Dispatch Clearance Note', 'DCN', 'D1,D2,D3,D4', 'Confirms this unit has cleared all pre-dispatch requirements and is cleared for dispatch from the factory.'),
+('warranty_certificate', 'Warranty Certificate', 'WC', NULL, 'Warranty terms and conditions applicable to this transformer.'),
+('nameplate', 'Nameplate / Rating Plate Data Sheet', 'NP', 'M1', 'Rating plate data for this unit.'),
+('technical_offer', 'Technical Offer Sheet', 'TOS', 'M1', 'Technical offer summary for this order, for customer reference.'),
+('bom_export', 'Bill of Materials Export', 'BOM', 'M1,M2,M3,M4,M5,M6', 'Bill of materials / key components summary for this order, drawn from the GTP design data.'),
+('mtc_index', 'Material Test Certificate Index', 'MTCI', NULL, 'Index of material test certificates on file in the Document Library for this order.');
 
 -- ---------------------------------------------------------------------
 -- DEFAULT SYSTEM SETTINGS
@@ -158,4 +176,5 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('default_issue_days', '7'),
 ('grace_period_working_days', '2'),
 ('reminder_days_before_due', '1'),
-('whatsapp_enabled', '0');
+('whatsapp_enabled', '0'),
+('warranty_terms_text', 'This transformer is warranted against defects in material and workmanship for a period of 18 months from the date of dispatch or 12 months from the date of commissioning, whichever is earlier, subject to the transformer being installed, operated, and maintained in accordance with the manufacturer''s instructions. This warranty does not cover damage due to improper installation, unauthorized repair, or force majeure.');

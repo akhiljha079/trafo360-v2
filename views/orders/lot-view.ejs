@@ -45,3 +45,19 @@
     </table>
   </div>
 </div>
+
+<% if (genDocTypes && genDocTypes.length) { %>
+<div class="card mt-3">
+  <div class="card-header"><i class="bi bi-file-earmark-pdf"></i> Generate Document</div>
+  <div class="card-body">
+    <form action="/orders/<%= order.id %>/lots/<%= lot.id %>/generate-document" method="POST" class="d-flex gap-2">
+      <select name="doc_type" class="form-select form-select-sm" required>
+        <% genDocTypes.forEach(function(t) { %><option value="<%= t.doc_type %>"><%= t.name %></option><% }); %>
+      </select>
+      <button class="btn btn-sm btn-primary" type="submit">Generate</button>
+    </form>
+    <div class="form-text">Generates a PDF listing all units in this lot and adds it to the Document Library.</div>
+  </div>
+</div>
+<% } %>
+

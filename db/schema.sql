@@ -272,6 +272,8 @@ CREATE TABLE IF NOT EXISTS documents (
   category_id INT DEFAULT NULL,
   confidentiality ENUM('Public','Internal','Confidential','Highly Confidential') NOT NULL DEFAULT 'Internal',
   related_job_id INT DEFAULT NULL,
+  related_order_id INT DEFAULT NULL COMMENT 'Set for order/lot-level documents (QAP, BOM, Packing List, etc.)',
+  related_lot_id INT DEFAULT NULL,
   storage_location VARCHAR(150) DEFAULT NULL COMMENT 'Physical rack/shelf/cabinet reference, if a physical file',
   file_path VARCHAR(500) DEFAULT NULL COMMENT 'Uploaded scanned copy, if any',
   qr_token VARCHAR(64) DEFAULT NULL UNIQUE COMMENT 'Random token encoded in this document''s QR label for physical file tracking',
@@ -281,7 +283,46 @@ CREATE TABLE IF NOT EXISTS documents (
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   FOREIGN KEY (category_id) REFERENCES document_categories(id),
   FOREIGN KEY (related_job_id) REFERENCES jobs(id) ON DELETE SET NULL,
+  FOREIGN KEY (related_order_id) REFERENCES orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (related_lot_id) REFERENCES lots(id) ON DELETE SET NULL,
   FOREIGN KEY (uploaded_by) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- DOCUMENT TEMPLATES  (admin-customizable settings per generated-document
+-- type - numbering prefix, which GTP-tagged stages feed its data table,
+-- enable/disable. The actual PDF layout lives in
+-- views/documents/generate/pdf-template.ejs, driven by utils/documentTypes.js)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS document_templates (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  doc_type VARCHAR(60) NOT NULL UNIQUE COMMENT 'Matches a key in utils/documentTypes.js',
+  name VARCHAR(150) NOT NULL,
+  numbering_prefix VARCHAR(20) NOT NULL,
+  source_stage_codes VARCHAR(255) DEFAULT NULL COMMENT 'Comma-separated stage_codes whose GTP-tagged fields feed this document',
+  intro_text VARCHAR(1000) DEFAULT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- GENERATED DOCUMENTS  (audit trail linking a PDF the system generated back
+-- to its source job/order/lot and the documents-library row it created)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS generated_documents (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  doc_type VARCHAR(60) NOT NULL,
+  document_id INT NOT NULL COMMENT 'The documents-library row holding the actual PDF',
+  job_id INT DEFAULT NULL,
+  order_id INT DEFAULT NULL,
+  lot_id INT DEFAULT NULL,
+  generated_by INT DEFAULT NULL,
+  generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+  FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE SET NULL,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
+  FOREIGN KEY (lot_id) REFERENCES lots(id) ON DELETE SET NULL,
+  FOREIGN KEY (generated_by) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------
@@ -351,7 +392,7 @@ CREATE TABLE IF NOT EXISTS smtp_settings (
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS system_settings (
   setting_key VARCHAR(80) PRIMARY KEY,
-  setting_value VARCHAR(500) DEFAULT NULL
+  setting_value TEXT DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 SET FOREIGN_KEY_CHECKS = 1;

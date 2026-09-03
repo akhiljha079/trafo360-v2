@@ -115,6 +115,37 @@
         </div>
       </div>
     </div>
+
+    <div class="card mt-3">
+      <div class="card-header">Linked Documents</div>
+      <div class="card-body">
+        <% if (!documents.length) { %><p class="text-muted mb-0">No documents linked to this order yet.</p><% } %>
+        <% documents.forEach(function(d) { %>
+          <div class="d-flex justify-content-between border-bottom py-2">
+            <div>
+              <div class="fw-bold"><%= d.doc_code %></div>
+              <div class="small text-muted"><%= d.doc_name %></div>
+            </div>
+            <a href="/documents/<%= d.id %>" class="btn btn-sm btn-outline-primary">View</a>
+          </div>
+        <% }); %>
+      </div>
+    </div>
+
+    <% if (genDocTypes && genDocTypes.length) { %>
+    <div class="card mt-3">
+      <div class="card-header"><i class="bi bi-file-earmark-pdf"></i> Generate Document</div>
+      <div class="card-body">
+        <form action="/orders/<%= order.id %>/generate-document" method="POST" class="d-flex gap-2">
+          <select name="doc_type" class="form-select form-select-sm" required>
+            <% genDocTypes.forEach(function(t) { %><option value="<%= t.doc_type %>"><%= t.name %></option><% }); %>
+          </select>
+          <button class="btn btn-sm btn-primary" type="submit">Generate</button>
+        </form>
+        <div class="form-text">Generates a PDF from this order's GTP data and adds it to the Document Library.</div>
+      </div>
+    </div>
+    <% } %>
   </div>
 </div>
 

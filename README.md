@@ -151,6 +151,22 @@ For orders manufactured in batches (e.g. "50 x 10MVA transformers, released in l
   before — Orders/Lots are additive, not a replacement, for one-off units or smaller orders that don't
   need batch tracking.
 
+### 6.1 Technical Document Generation
+
+A **Generate Document** panel on every Job, Order, and Lot page produces a formal, letterheaded PDF
+straight from that unit's/order's GTP data — no manual drafting. Eleven document types ship by
+default: Routine Test Report, Type Test Certificate, Quality Assurance Plan, Inspection Call Notice,
+Packing List, Dispatch Clearance Note, Warranty Certificate, Nameplate/Rating Plate Data Sheet,
+Technical Offer Sheet, Bill of Materials Export, and Material Test Certificate Index. Every generated
+PDF is **automatically added to the Document Library** — it gets a QR label, an auto-generated
+document number, the standard confidentiality/issue-approval workflow, and is linked back to its
+source Job/Order/Lot — nothing generated lives outside the existing document-control system.
+`Admin → Document Templates` controls the numbering prefix, intro text, and which GTP-tagged stages
+feed each document type's data table (or disables a type entirely). If you're upgrading an existing
+install, run `db/upgrade_document_generation.sql` once (a fresh `npm run seed` already includes
+everything). Rendering uses a headless Chromium instance (via Puppeteer, downloaded automatically on
+`npm install`) - no extra server setup needed beyond what a normal deploy already does.
+
 ## 7. Department Document Gating
 
 **Admin → Stage Document Requirements** lets you define what a department must upload before a unit

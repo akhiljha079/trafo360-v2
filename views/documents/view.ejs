@@ -34,6 +34,9 @@
         <table class="table table-sm mb-0">
           <tr><th style="width:200px;">Category</th><td><%= doc.category_name || '-' %></td></tr>
           <tr><th>Linked Job</th><td><%= doc.job_no ? doc.job_no + ' - ' + doc.customer_name : '-' %></td></tr>
+          <% if (doc.related_order_no) { %>
+            <tr><th>Linked Order</th><td><a href="/orders/<%= doc.related_order_id %>"><%= doc.related_order_no %></a><% if (doc.related_lot_name) { %> / <%= doc.related_lot_name || ('Lot ' + doc.related_lot_no) %><% } %></td></tr>
+          <% } %>
           <tr><th>Storage Location</th><td><%= doc.storage_location || '-' %></td></tr>
           <tr><th>Current Status</th><td><span class="badge bg-secondary"><%= doc.current_status %></span></td></tr>
           <tr><th>Uploaded By</th><td><%= doc.uploaded_by_name || '-' %> on <%= doc.upload_date %></td></tr>

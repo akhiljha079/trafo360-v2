@@ -7,6 +7,8 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { notifyStageEvent } = require('../utils/notify');
 const { getActiveTransformerTypes } = require('../utils/gtpSchema');
+const { DOCUMENT_TYPES } = require('../utils/documentTypes');
+const { generateDocument } = require('../utils/documentGenerator');
 const upload = require('../middleware/upload');
 const router = express.Router();
 
@@ -136,7 +138,36 @@ router.get('/jobs/:id', requireAuth, async (req, res) => {
   }
   const missingMandatory = requirements.filter(r => r.is_mandatory && r.uploads.length === 0);
 
-  res.render('jobs/view', { title: job.job_no, job, allStages, history, documents, nextStage, requirements, missingMandatory });
+  const [genDocTypes] = await pool.query(
+    `SELECT doc_type, name FROM document_templates WHERE is_active=1 AND doc_type IN (?) ORDER BY name`,
+    [Object.keys(DOCUMENT_TYPES).filter(k => DOCUMENT_TYPES[k].scope === 'job')]
+  );
+
+  res.render('jobs/view', { title: job.job_no, job, allStages, history, documents, nextStage, requirements, missingMandatory, genDocTypes });
+});
+
+// GENERATE a technical document (Routine Test Report, Nameplate, etc.) for this unit
+router.post('/jobs/:id/generate-document', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+  const { doc_type } = req.body;
+  const jobId = req.params.id;
+  try {
+    const [[job]] = await pool.query(
+      `SELECT j.*, o.order_no, o.customer_name AS order_customer_name, o.po_no AS order_po_no,
+              o.transformer_type AS order_transformer_type, o.rating AS order_rating, o.gtp_json
+       FROM jobs j LEFT JOIN orders o ON j.order_id = o.id WHERE j.id=? AND j.is_deleted=0`, [jobId]);
+    if (!job) { req.flash('error', 'Job not found.'); return res.redirect('/jobs'); }
+    const order = job.order_id ? {
+      id: job.order_id, order_no: job.order_no, customer_name: job.order_customer_name,
+      po_no: job.order_po_no, transformer_type: job.order_transformer_type, rating: job.order_rating, gtp_json: job.gtp_json
+    } : null;
+    const documentId = await generateDocument(doc_type, { job, order }, req.session.user.id);
+    req.flash('success', 'Document generated and added to the Document Library.');
+    res.redirect(`/documents/${documentId}`);
+  } catch (err) {
+    req.log?.error({ err }, 'document generation failed');
+    req.flash('error', `Could not generate document: ${err.message}`);
+    res.redirect(`/jobs/${jobId}`);
+  }
 });
 
 // UPLOAD a required (or ad-hoc) document for the job's CURRENT stage

@@ -5,6 +5,8 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { notifyStageEvent } = require('../utils/notify');
 const { getSchema, getActiveTransformerTypes, fieldsForStage } = require('../utils/gtpSchema');
+const { DOCUMENT_TYPES } = require('../utils/documentTypes');
+const { generateDocument } = require('../utils/documentGenerator');
 const router = express.Router();
 
 const orderFieldRules = [
@@ -129,7 +131,33 @@ router.get('/orders/:id', requireAuth, async (req, res) => {
   // Manufacturing-phase stages, for the "generate work order" quick links
   const [mfgStages] = await pool.query(`SELECT * FROM stages WHERE phase='Manufacturing' AND is_active=1 ORDER BY sequence_order ASC`);
 
-  res.render('orders/view', { title: order.order_no, order, gtpData, gtpGroups, lots, nextLotNo, allocatedQty, mfgStages });
+  const [documents] = await pool.query(
+    `SELECT * FROM documents WHERE related_order_id=? AND is_active=1 ORDER BY upload_date DESC`, [req.params.id]
+  );
+
+  const [genDocTypes] = await pool.query(
+    `SELECT doc_type, name FROM document_templates WHERE is_active=1 AND doc_type IN (?) ORDER BY name`,
+    [Object.keys(DOCUMENT_TYPES).filter(k => DOCUMENT_TYPES[k].scope === 'order')]
+  );
+
+  res.render('orders/view', { title: order.order_no, order, gtpData, gtpGroups, lots, nextLotNo, allocatedQty, mfgStages, documents, genDocTypes });
+});
+
+// GENERATE an order-level technical document (QAP, Technical Offer, BOM, MTC Index)
+router.post('/orders/:id/generate-document', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+  const { doc_type } = req.body;
+  const orderId = req.params.id;
+  try {
+    const [[order]] = await pool.query('SELECT * FROM orders WHERE id=? AND is_deleted=0', [orderId]);
+    if (!order) { req.flash('error', 'Order not found.'); return res.redirect('/orders'); }
+    const documentId = await generateDocument(doc_type, { order }, req.session.user.id);
+    req.flash('success', 'Document generated and added to the Document Library.');
+    res.redirect(`/documents/${documentId}`);
+  } catch (err) {
+    req.log?.error({ err }, 'document generation failed');
+    req.flash('error', `Could not generate document: ${err.message}`);
+    res.redirect(`/orders/${orderId}`);
+  }
 });
 
 // ---------------- ADD LOT (auto-creates the unit/job records) ----------------
@@ -230,7 +258,30 @@ router.get('/orders/:id/lots/:lotId', requireAuth, async (req, res) => {
     pct: units.length ? Math.round(((completedMap[s.id] || 0) / units.length) * 100) : 0
   }));
 
-  res.render('orders/lot-view', { title: `${order.order_no} - ${lot.lot_name}`, order, lot, units, matrix });
+  const [genDocTypes] = await pool.query(
+    `SELECT doc_type, name FROM document_templates WHERE is_active=1 AND doc_type IN (?) ORDER BY name`,
+    [Object.keys(DOCUMENT_TYPES).filter(k => DOCUMENT_TYPES[k].scope === 'lot')]
+  );
+
+  res.render('orders/lot-view', { title: `${order.order_no} - ${lot.lot_name}`, order, lot, units, matrix, genDocTypes });
+});
+
+// GENERATE a lot-level technical document (Packing List)
+router.post('/orders/:id/lots/:lotId/generate-document', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+  const { doc_type } = req.body;
+  const { id: orderId, lotId } = req.params;
+  try {
+    const [[order]] = await pool.query('SELECT * FROM orders WHERE id=? AND is_deleted=0', [orderId]);
+    const [[lot]] = await pool.query('SELECT * FROM lots WHERE id=? AND order_id=?', [lotId, orderId]);
+    if (!order || !lot) { req.flash('error', 'Lot not found.'); return res.redirect('/orders'); }
+    const documentId = await generateDocument(doc_type, { order, lot }, req.session.user.id);
+    req.flash('success', 'Document generated and added to the Document Library.');
+    res.redirect(`/documents/${documentId}`);
+  } catch (err) {
+    req.log?.error({ err }, 'document generation failed');
+    req.flash('error', `Could not generate document: ${err.message}`);
+    res.redirect(`/orders/${orderId}/lots/${lotId}`);
+  }
 });
 
 // ---------------- SYSTEM-GENERATED DEPARTMENT WORK ORDER (printable) ----------------

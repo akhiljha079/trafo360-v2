@@ -131,9 +131,11 @@ router.post('/documents/:id/delete', requireAuth, requirePermission('is_admin'),
 // VIEW
 router.get('/documents/:id', requireAuth, async (req, res) => {
   const [[doc]] = await pool.query(
-    `SELECT d.*, c.name AS category_name, j.job_no, j.customer_name, u.name AS uploaded_by_name
+    `SELECT d.*, c.name AS category_name, j.job_no, j.customer_name, u.name AS uploaded_by_name,
+            ro.order_no AS related_order_no, rl.lot_name AS related_lot_name, rl.lot_no AS related_lot_no
      FROM documents d LEFT JOIN document_categories c ON d.category_id=c.id
      LEFT JOIN jobs j ON d.related_job_id=j.id LEFT JOIN users u ON d.uploaded_by=u.id
+     LEFT JOIN orders ro ON d.related_order_id=ro.id LEFT JOIN lots rl ON d.related_lot_id=rl.id
      WHERE d.id=?`, [req.params.id]);
   if (!doc) { req.flash('error', 'Document not found.'); return res.redirect('/documents'); }
   if (!canSeeDocument(req.session.user, doc)) {

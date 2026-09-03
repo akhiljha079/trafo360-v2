@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title><%= docNumber %></title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1a1a1a; margin: 0; }
+  .letterhead { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0F3B5F; padding-bottom: 10px; margin-bottom: 14px; }
+  .letterhead .company { font-size: 16px; font-weight: bold; color: #0F3B5F; }
+  .letterhead .tagline { font-size: 9px; color: #666; margin-top: 2px; }
+  .letterhead .docmeta { text-align: right; font-size: 9px; color: #444; }
+  .letterhead .docmeta b { color: #0F3B5F; }
+  h1.doctitle { font-size: 15px; color: #0F3B5F; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0; }
+  p.intro { color: #444; margin: 0 0 14px 0; }
+  .idblock { display: flex; flex-wrap: wrap; gap: 4px 24px; background: #F7F9FC; border: 1px solid #E5E9F0; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 10.5px; }
+  .idblock .item b { color: #0F3B5F; }
+  table.datatable { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  table.datatable th, table.datatable td { border: 1px solid #D8DEE9; padding: 5px 8px; text-align: left; font-size: 10.5px; }
+  table.datatable th { background: #0F3B5F; color: #fff; font-weight: 600; }
+  table.datatable tr:nth-child(even) td { background: #F7F9FC; }
+  .group-heading td { background: #E5E9F0 !important; font-weight: bold; color: #0F3B5F; }
+  .terms { white-space: pre-wrap; line-height: 1.5; border: 1px solid #E5E9F0; border-radius: 6px; padding: 12px; background: #FCFCFD; }
+  .signblock { display: flex; justify-content: space-between; margin-top: 40px; }
+  .signblock .sig { width: 30%; border-top: 1px solid #999; text-align: center; padding-top: 6px; font-size: 9.5px; color: #666; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #E5E9F0; color: #0F3B5F; font-size: 9px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="letterhead">
+  <div>
+    <div class="company"><%= companyName %></div>
+    <div class="tagline"><%= def.label %></div>
+  </div>
+  <div class="docmeta">
+    <div><b>Doc No:</b> <%= docNumber %></div>
+    <div><b>Date:</b> <%= generatedDate %></div>
+    <% if (order) { %><div><b>Order:</b> <%= order.order_no %></div><% } %>
+    <% if (job) { %><div><b>Job:</b> <%= job.job_no %></div><% } %>
+    <% if (lot) { %><div><b>Lot:</b> <%= lot.lot_name || ('Lot ' + lot.lot_no) %></div><% } %>
+  </div>
+</div>
+
+<h1 class="doctitle"><%= def.label %></h1>
+<% if (template.intro_text) { %><p class="intro"><%= template.intro_text %></p><% } %>
+
+<div class="idblock">
+  <% if (order) { %>
+    <div class="item"><b>Customer:</b> <%= order.customer_name %></div>
+    <div class="item"><b>PO No:</b> <%= order.po_no || '-' %></div>
+    <div class="item"><b>Transformer Type:</b> <%= order.transformer_type %></div>
+    <div class="item"><b>Rating:</b> <%= order.rating || '-' %></div>
+  <% } %>
+  <% if (job) { %>
+    <div class="item"><b>Serial No:</b> <%= job.serial_no || '-' %></div>
+    <div class="item"><b>Unit:</b> <%= job.unit_no ? ('#' + job.unit_no) : '-' %></div>
+  <% } %>
+</div>
+
+<% if (def.body === 'test-results') { %>
+  <table class="datatable">
+    <thead><tr><th style="width:34%;">Parameter</th><th>Guaranteed (GTP)</th><th style="width:20%;">Measured</th><th style="width:14%;">Result</th></tr></thead>
+    <tbody>
+      <% fields.forEach(function(f) { %>
+        <tr>
+          <td><%= f.label %></td>
+          <td><%= f.value || '-' %> <%= f.unit ? f.unit : '' %></td>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+        </tr>
+      <% }); %>
+      <% if (!fields.length) { %><tr><td colspan="4" style="color:#999;">No GTP parameters tagged for this document's source stage(s) yet - add them in Admin &gt; GTP Schema.</td></tr><% } %>
+    </tbody>
+  </table>
+  <div class="signblock">
+    <div class="sig">Tested By</div>
+    <div class="sig">Verified By (QA)</div>
+    <div class="sig">Approved By</div>
+  </div>
+
+<% } else if (def.body === 'gtp-table') { %>
+  <table class="datatable">
+    <thead><tr><th style="width:40%;">Parameter</th><th>Value</th></tr></thead>
+    <tbody>
+      <% var lastGroup = null; %>
+      <% fields.forEach(function(f) { %>
+        <% if (f.group !== lastGroup) { lastGroup = f.group; %>
+          <tr class="group-heading"><td colspan="2"><%= f.group %></td></tr>
+        <% } %>
+        <tr><td><%= f.label %></td><td><%= f.value || '-' %> <%= f.unit ? f.unit : '' %></td></tr>
+      <% }); %>
+      <% if (!fields.length) { %><tr><td colspan="2" style="color:#999;">No GTP parameters tagged for this document's source stage(s) yet.</td></tr><% } %>
+    </tbody>
+  </table>
+
+<% } else if (def.body === 'stage-checklist') { %>
+  <table class="datatable">
+    <thead><tr><th style="width:10%;">Stage</th><th>Stage Name</th><th>Inspection / Document Requirement</th><th style="width:12%;">Mandatory</th></tr></thead>
+    <tbody>
+      <% checklist.forEach(function(row) { %>
+        <% if (!row.requirements.length) { %>
+          <tr><td><%= row.stage.stage_code %></td><td><%= row.stage.stage_name %></td><td style="color:#999;">- none defined -</td><td></td></tr>
+        <% } else { %>
+          <% row.requirements.forEach(function(r, i) { %>
+            <tr>
+              <td><%= i === 0 ? row.stage.stage_code : '' %></td>
+              <td><%= i === 0 ? row.stage.stage_name : '' %></td>
+              <td><%= r.requirement_name %></td>
+              <td><%= r.is_mandatory ? 'Mandatory' : 'Optional' %></td>
+            </tr>
+          <% }); %>
+        <% } %>
+      <% }); %>
+    </tbody>
+  </table>
+
+<% } else if (def.body === 'unit-list') { %>
+  <table class="datatable">
+    <thead><tr><th style="width:10%;">Unit</th><th>Job No.</th><th>Serial No.</th><th>Rating</th><th>Status</th><th>Weight</th></tr></thead>
+    <tbody>
+      <% units.forEach(function(u) { %>
+        <tr>
+          <td>#<%= u.unit_no %></td>
+          <td><%= u.job_no %></td>
+          <td><%= u.serial_no || '-' %></td>
+          <td><%= u.rating || '-' %></td>
+          <td><%= u.status %></td>
+          <td><%= unitWeightKg ? unitWeightKg + ' kg' : '-' %></td>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+
+<% } else if (def.body === 'nameplate') { %>
+  <table class="datatable">
+    <tbody>
+      <% fields.forEach(function(f) { %>
+        <tr><td style="width:40%;font-weight:bold;"><%= f.label %></td><td><%= f.value || '-' %> <%= f.unit ? f.unit : '' %></td></tr>
+      <% }); %>
+    </tbody>
+  </table>
+
+<% } else if (def.body === 'terms-text') { %>
+  <div class="terms"><%= termsText %></div>
+  <div class="signblock">
+    <div class="sig">Authorized Signatory</div>
+    <div></div>
+  </div>
+
+<% } else if (def.body === 'document-index') { %>
+  <table class="datatable">
+    <thead><tr><th style="width:16%;">Doc Code</th><th>Name</th><th>Category</th><th style="width:16%;">Uploaded</th></tr></thead>
+    <tbody>
+      <% documents.forEach(function(d) { %>
+        <tr>
+          <td><%= d.doc_code %></td>
+          <td><%= d.doc_name %></td>
+          <td><%= d.category_name || '-' %></td>
+          <td><%= new Date(d.upload_date).toLocaleDateString('en-IN') %></td>
+        </tr>
+      <% }); %>
+      <% if (!documents.length) { %><tr><td colspan="4" style="color:#999;">No documents on file for this order yet.</td></tr><% } %>
+    </tbody>
+  </table>
+<% } %>
+
+</body>
+</html>

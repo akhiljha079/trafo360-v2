@@ -279,7 +279,7 @@ router.get('/admin/settings', requireAuth, adminOnly, async (req, res) => {
 });
 
 router.post('/admin/settings', requireAuth, adminOnly, async (req, res) => {
-  const entries = Object.entries(req.body);
+  const entries = Object.entries(req.body).filter(([key]) => key !== '_csrf');
   for (const [key, value] of entries) {
     await pool.query(
       `INSERT INTO system_settings (setting_key, setting_value) VALUES (?,?)

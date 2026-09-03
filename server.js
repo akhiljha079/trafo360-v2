@@ -80,6 +80,15 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
   message: 'Too many login attempts. Please wait a few minutes and try again.'
 });
+// PDF generation spins up a headless-Chromium page per document - cheap
+// individually, but worth capping against accidental or deliberate abuse.
+const generateDocumentLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many documents generated in a short time. Please wait a few minutes and try again.'
+});
 
 // Core middleware
 app.use(express.urlencoded({ extended: true }));
@@ -109,6 +118,7 @@ app.use((req, res, next) => {
 
 // Routes
 app.post('/login', loginLimiter);
+app.use((req, res, next) => (/\/generate-document$/.test(req.path) ? generateDocumentLimiter(req, res, next) : next()));
 app.use(require('./routes/auth'));
 app.use(require('./routes/dashboard'));
 app.use(require('./routes/jobs'));
@@ -119,6 +129,7 @@ app.use(require('./routes/issues'));
 app.use(require('./routes/analytics'));
 app.use(require('./routes/admin'));
 app.use(require('./routes/gtpSchema'));
+app.use(require('./routes/documentTemplates'));
 
 app.get('/', (req, res) => res.redirect(req.session.user ? '/dashboard' : '/login'));
 
