@@ -1,0 +1,12 @@
+<nav class="navbar app-navbar mb-4 rounded-3 px-3">
+  <div class="container-fluid">
+    <a class="navbar-brand text-white" href="/portal"><span class="brand-mark">T3</span> Customer Portal</a>
+    <div class="d-flex align-items-center gap-3">
+      <span class="text-white-50 small"><%= customerUser.customer_name %> &middot; <%= customerUser.name %></span>
+      <button type="button" class="btn btn-sm btn-outline-light" data-theme-toggle><i class="bi bi-moon-stars" data-theme-icon></i></button>
+      <form action="/portal/logout" method="POST" class="mb-0">
+        <button type="submit" class="btn btn-sm btn-outline-light">Logout</button>
+      </form>
+    </div>
+  </div>
+</nav>

@@ -6,11 +6,13 @@ const WIDGET_REGISTRY = [
   { key: 'jobs_by_phase', label: 'Active Jobs by Phase' },
   { key: 'recent_jobs', label: 'Recently Updated Jobs' },
   { key: 'my_issues', label: 'My Issued Documents (Due Soon)' },
-  { key: 'pending_approvals', label: 'Pending Approvals', requires: 'can_approve_document_issue' }
+  { key: 'pending_approvals', label: 'Pending Approvals', requiresModule: 'documents', requiresAction: 'approve' }
 ];
 
 function visibleToUser(widget, user) {
-  return !widget.requires || !!user[widget.requires];
+  if (!widget.requiresModule) return true;
+  if (user.is_admin) return true;
+  return !!(user.permissions && user.permissions[widget.requiresModule] && user.permissions[widget.requiresModule][widget.requiresAction]);
 }
 
 // Returns the registry merged with this user's saved prefs (defaults for

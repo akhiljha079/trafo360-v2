@@ -27,10 +27,11 @@ router.get('/search', requireAuth, async (req, res) => {
       [like, like, like, RESULT_LIMIT]
     );
     const [docRows] = await pool.query(
-      `SELECT id, doc_code, doc_name, confidentiality, uploaded_by, current_status FROM documents
-       WHERE is_active=1 AND (doc_code LIKE ? OR doc_name LIKE ?)
-       ORDER BY upload_date DESC LIMIT ?`,
-      [like, like, RESULT_LIMIT * 2] // over-fetch since some get filtered by confidentiality below
+      `SELECT d.id, d.doc_code, d.doc_name, d.confidentiality, d.uploaded_by, d.current_status, c.category_type
+       FROM documents d LEFT JOIN document_categories c ON d.category_id=c.id
+       WHERE d.is_active=1 AND (d.doc_code LIKE ? OR d.doc_name LIKE ? OR d.ocr_text LIKE ?)
+       ORDER BY d.upload_date DESC LIMIT ?`,
+      [like, like, like, RESULT_LIMIT * 2] // over-fetch since some get filtered by confidentiality below
     );
     documents = docRows.filter(d => canSeeDocument(req.session.user, d)).slice(0, RESULT_LIMIT);
   }

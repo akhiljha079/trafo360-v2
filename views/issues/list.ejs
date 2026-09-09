@@ -1,5 +1,12 @@
-<h4 class="mb-3">Document Issues</h4>
-<div class="card">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">Document Issues</h4>
+  <div class="btn-group view-toggle" data-view-toggle="issues" data-view-table="issuesTable" data-view-grid="issuesGrid" role="group" aria-label="View mode">
+    <button type="button" class="btn btn-outline-secondary" data-view-mode="table" title="Table view"><i class="bi bi-table"></i></button>
+    <button type="button" class="btn btn-outline-secondary" data-view-mode="grid" title="Grid view"><i class="bi bi-grid-3x3-gap"></i></button>
+  </div>
+</div>
+
+<div id="issuesTable" class="card">
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead><tr><th>Doc Code</th><th>Document</th><th>Requested By</th><th>Status</th><th>Issue Date</th><th>Due Date</th><th></th></tr></thead>
@@ -19,4 +26,24 @@
       </tbody>
     </table>
   </div>
+</div>
+
+<div id="issuesGrid" class="entity-card-grid" hidden>
+  <% issues.forEach(function(i, idx) { %>
+    <a href="/issues/<%= i.id %>" class="entity-card" data-animate style="transition-delay: <%= Math.min(idx, 10) * 30 %>ms;">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-card-title"><%= i.doc_code %></div>
+          <div class="entity-card-meta"><%= i.doc_name %></div>
+        </div>
+        <span class="badge status-badge-<%= i.status.replace(/ /g,'') %>"><%= i.status %></span>
+      </div>
+      <div class="entity-card-meta">Requested by <%= i.requester_name %></div>
+      <div class="d-flex justify-content-between small text-muted">
+        <span>Issued: <%= i.issue_date || '-' %></span>
+        <span>Due: <%= i.due_date || '-' %></span>
+      </div>
+    </a>
+  <% }); %>
+  <% if (issues.length === 0) { %><p class="text-muted text-center py-4">No issue records found.</p><% } %>
 </div>

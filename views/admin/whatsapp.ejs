@@ -12,12 +12,16 @@
 
 <div class="row g-3">
   <div class="col-lg-6">
-    <div class="card">
+    <div class="card" data-animate>
       <div class="card-header">Connection Status</div>
       <div class="card-body text-center">
         <% if (status.status === 'ready') { %>
           <div class="mb-3"><span class="badge bg-success fs-6">Connected</span></div>
           <p class="text-muted">WhatsApp Web is connected and sending notifications.</p>
+          <form action="/admin/whatsapp/test" method="POST" class="d-flex gap-2 mb-3">
+            <input type="text" name="test_number" class="form-control" placeholder="91XXXXXXXXXX" required>
+            <button type="submit" class="btn btn-outline-primary text-nowrap">Send Test Message</button>
+          </form>
           <form action="/admin/whatsapp/disable" method="POST" onsubmit="return confirm('Disconnect WhatsApp notifications?')">
             <button class="btn btn-outline-danger" type="submit">Disconnect</button>
           </form>
@@ -48,7 +52,7 @@
   </div>
 
   <div class="col-lg-6">
-    <div class="card">
+    <div class="card" data-animate style="transition-delay: 80ms;">
       <div class="card-header">How It Works</div>
       <div class="card-body">
         <ol class="small mb-0">

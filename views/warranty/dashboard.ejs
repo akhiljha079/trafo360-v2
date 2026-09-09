@@ -1,0 +1,93 @@
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-shield-check"></i> Warranty</h4>
+  <div class="btn-group view-toggle" data-view-toggle="warranty" data-view-table="warrantyTable" data-view-grid="warrantyGrid" role="group" aria-label="View mode">
+    <button type="button" class="btn btn-outline-secondary" data-view-mode="table" title="Table view"><i class="bi bi-table"></i></button>
+    <button type="button" class="btn btn-outline-secondary" data-view-mode="grid" title="Grid view"><i class="bi bi-grid-3x3-gap"></i></button>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3 col-6">
+    <a href="/warranty?status=Active" class="text-decoration-none">
+      <div class="card p-3 text-center" data-animate>
+        <div class="rag-dot rag-green mx-auto mb-1"></div>
+        <div class="fs-4 fw-bold"><%= counts.active || 0 %></div>
+        <div class="text-muted small">Active</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3 col-6">
+    <a href="/warranty?status=Expiring" class="text-decoration-none">
+      <div class="card p-3 text-center" data-animate>
+        <div class="rag-dot rag-amber mx-auto mb-1"></div>
+        <div class="fs-4 fw-bold"><%= counts.expiring || 0 %></div>
+        <div class="text-muted small">Expiring Soon</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3 col-6">
+    <a href="/warranty?status=Expired" class="text-decoration-none">
+      <div class="card p-3 text-center" data-animate>
+        <div class="rag-dot rag-red mx-auto mb-1"></div>
+        <div class="fs-4 fw-bold"><%= counts.expired || 0 %></div>
+        <div class="text-muted small">Expired</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3 col-6">
+    <a href="/warranty" class="text-decoration-none">
+      <div class="card p-3 text-center" data-animate>
+        <div class="rag-dot rag-gray mx-auto mb-1"></div>
+        <div class="fs-4 fw-bold"><%= counts.total || 0 %></div>
+        <div class="text-muted small">All Units</div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<% var ragByStatus = { Active: 'green', Expiring: 'amber', Expired: 'red', Void: 'gray' }; %>
+
+<div id="warrantyTable" class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Warranty Records <% if (filterStatus) { %><span class="badge bg-secondary"><%= filterStatus %></span><% } %></span>
+    <% if (filterStatus) { %><a href="/warranty" class="small">Clear filter</a><% } %>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+      <thead><tr><th>Job No.</th><th>Customer</th><th>Type</th><th>Start</th><th>End</th><th>Status</th><th>Claims</th><th></th></tr></thead>
+      <tbody>
+      <% warranties.forEach(function(w) { %>
+        <tr>
+          <td><%= w.job_no %></td>
+          <td><%= w.customer_name %></td>
+          <td class="small"><%= w.transformer_type %></td>
+          <td class="small"><%= w.start_date %></td>
+          <td class="small"><%= w.end_date %></td>
+          <td><span class="badge badge-rag-<%= ragByStatus[w.status] %>"><%= w.status %></span></td>
+          <td><%= w.claim_count %><% if (w.open_claim_count > 0) { %> <span class="badge bg-warning text-dark"><%= w.open_claim_count %> open</span><% } %></td>
+          <td><a href="/warranty/<%= w.id %>" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+      <% }); %>
+      <% if (warranties.length === 0) { %><tr><td colspan="8" class="text-center text-muted py-4">No warranty records yet - they're created automatically when a job is dispatched (marked Completed).</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="warrantyGrid" class="entity-card-grid" hidden>
+  <% warranties.forEach(function(w, i) { %>
+    <a href="/warranty/<%= w.id %>" class="entity-card" data-animate style="transition-delay: <%= Math.min(i, 10) * 30 %>ms;">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-card-title"><%= w.job_no %></div>
+          <div class="entity-card-meta"><%= w.customer_name %></div>
+        </div>
+        <span class="badge badge-rag-<%= ragByStatus[w.status] %>"><%= w.status %></span>
+      </div>
+      <div class="entity-card-meta"><%= w.transformer_type %></div>
+      <div class="entity-card-meta">Expires <%= w.end_date %></div>
+      <% if (w.open_claim_count > 0) { %><span class="badge bg-warning text-dark align-self-start"><%= w.open_claim_count %> open claim(s)</span><% } %>
+    </a>
+  <% }); %>
+  <% if (warranties.length === 0) { %><p class="text-muted text-center py-4">No warranty records yet.</p><% } %>
+</div>

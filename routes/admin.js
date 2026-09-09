@@ -4,6 +4,7 @@ const { body } = require('express-validator');
 const pool = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
+const { sendMail } = require('../config/mailer');
 const whatsapp = require('../utils/whatsapp');
 const router = express.Router();
 
@@ -63,16 +64,27 @@ router.post('/admin/users/:id/reset-password', requireAuth, adminOnly, [
 });
 
 // ---------------- ROLES / PRIVILEGES ----------------
+// Per-module (Sales/Manufacturing/Dispatch/Documents/Warranty/Accounting/
+// Reports) View/Create/Edit/Delete/Approve grid, plus the 3 cross-cutting
+// flags (Admin, Director, View Confidential) that were never module-scoped
+// to begin with. See middleware/auth.js requireModule() / db/schema.sql.
 router.get('/admin/roles', requireAuth, adminOnly, async (req, res) => {
   const [roles] = await pool.query('SELECT * FROM roles ORDER BY name');
-  res.render('admin/roles', { title: 'Manage Roles & Privileges', roles });
+  const [modules] = await pool.query('SELECT * FROM modules WHERE is_active=1 ORDER BY sequence_order ASC');
+  const [permRows] = await pool.query('SELECT * FROM role_permissions');
+  const permMap = {};
+  permRows.forEach(p => {
+    permMap[p.role_id] = permMap[p.role_id] || {};
+    permMap[p.role_id][p.module_id] = p;
+  });
+  res.render('admin/roles', { title: 'Manage Roles & Privileges', roles, modules, permMap });
 });
 
 router.post('/admin/roles', requireAuth, adminOnly, async (req, res) => {
   const { name, description } = req.body;
   try {
     await pool.query('INSERT INTO roles (name, description) VALUES (?,?)', [name, description || null]);
-    req.flash('success', `Role "${name}" created.`);
+    req.flash('success', `Role "${name}" created. Set its module permissions below, then have anyone with this role log out and back in for the change to take effect.`);
   } catch (err) {
     req.flash('error', 'Could not create role (name may already exist).');
   }
@@ -80,13 +92,34 @@ router.post('/admin/roles', requireAuth, adminOnly, async (req, res) => {
 });
 
 router.post('/admin/roles/:id', requireAuth, adminOnly, async (req, res) => {
-  const flags = ['is_admin','is_director','can_view_confidential','can_approve_document_issue','can_manage_documents','can_manage_jobs'];
-  const values = flags.map(f => (req.body[f] ? 1 : 0));
-  await pool.query(
-    `UPDATE roles SET is_admin=?, is_director=?, can_view_confidential=?, can_approve_document_issue=?, can_manage_documents=?, can_manage_jobs=? WHERE id=?`,
-    [...values, req.params.id]
-  );
-  req.flash('success', 'Role privileges updated.');
+  const roleId = req.params.id;
+  const { is_admin, is_director, can_view_confidential, perm } = req.body;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(
+      `UPDATE roles SET is_admin=?, is_director=?, can_view_confidential=? WHERE id=?`,
+      [is_admin ? 1 : 0, is_director ? 1 : 0, can_view_confidential ? 1 : 0, roleId]
+    );
+    const [modules] = await conn.query('SELECT id FROM modules WHERE is_active=1');
+    for (const m of modules) {
+      const p = (perm && perm[m.id]) || {};
+      await conn.query(
+        `INSERT INTO role_permissions (role_id, module_id, can_view, can_create, can_edit, can_delete, can_approve)
+         VALUES (?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE can_view=VALUES(can_view), can_create=VALUES(can_create), can_edit=VALUES(can_edit), can_delete=VALUES(can_delete), can_approve=VALUES(can_approve)`,
+        [roleId, m.id, p.view ? 1 : 0, p.create ? 1 : 0, p.edit ? 1 : 0, p.delete ? 1 : 0, p.approve ? 1 : 0]
+      );
+    }
+    await conn.commit();
+    req.flash('success', 'Role privileges updated. Anyone with this role needs to log out and back in for the change to take effect.');
+  } catch (err) {
+    await conn.rollback();
+    req.log?.error({ err }, 'role permission update failed');
+    req.flash('error', 'Could not update role privileges.');
+  } finally {
+    conn.release();
+  }
   res.redirect('/admin/roles');
 });
 
@@ -206,6 +239,28 @@ router.post('/admin/smtp', requireAuth, adminOnly, async (req, res) => {
   res.redirect('/admin/smtp');
 });
 
+// Sends a real test email through whatever SMTP config is currently saved
+// (getSmtpConfig() inside sendMail() falls back to .env if nothing's saved
+// yet), so Admin can confirm credentials work before relying on them.
+router.post('/admin/smtp/test', requireAuth, adminOnly, [
+  body('test_email').trim().isEmail().withMessage('Enter a valid email address to send the test to.')
+], validate, async (req, res) => {
+  const { test_email } = req.body;
+  try {
+    await sendMail({
+      to: test_email,
+      subject: 'TRAFO 360 - Test Email',
+      html: `<p>This is a test email from <strong>TRAFO 360</strong> (Trafo Power &amp; Electricals - Workflow &amp; DMS), sent by ${req.session.user.name} to confirm the SMTP settings are working.</p><p>If you received this, outgoing mail is configured correctly.</p>`,
+      text: `This is a test email from TRAFO 360, sent by ${req.session.user.name} to confirm the SMTP settings are working. If you received this, outgoing mail is configured correctly.`
+    });
+    req.flash('success', `Test email sent to ${test_email}. Check the inbox (and spam folder) to confirm delivery.`);
+  } catch (err) {
+    req.log?.error({ err }, 'SMTP test email failed');
+    req.flash('error', `Test email failed: ${err.message}`);
+  }
+  res.redirect('/admin/smtp');
+});
+
 // ---------------- STAGE DOCUMENT REQUIREMENTS (department upload gates) ----------------
 router.get('/admin/stage-requirements', requireAuth, adminOnly, async (req, res) => {
   const [stages] = await pool.query('SELECT * FROM stages ORDER BY sequence_order ASC');
@@ -267,6 +322,29 @@ router.post('/admin/whatsapp/disable', requireAuth, adminOnly, async (req, res) 
   );
   await whatsapp.disableWhatsApp();
   req.flash('success', 'WhatsApp notifications disabled.');
+  res.redirect('/admin/whatsapp');
+});
+
+// Sends a real test WhatsApp message via the connected session - only works
+// once status is 'ready' (QR scanned); sendWhatsAppMessage() itself no-ops
+// safely with a reason otherwise, which we surface as a flash message.
+router.post('/admin/whatsapp/test', requireAuth, adminOnly, [
+  body('test_number').trim().notEmpty().withMessage('Enter a WhatsApp number to send the test to (with country code, digits only, e.g. 91XXXXXXXXXX).')
+], validate, async (req, res) => {
+  const { test_number } = req.body;
+  const result = await whatsapp.sendWhatsAppMessage(
+    test_number,
+    `This is a test message from TRAFO 360 (Trafo Power & Electricals - Workflow & DMS), sent by ${req.session.user.name} to confirm WhatsApp notifications are working.`
+  );
+  if (result.sent) {
+    req.flash('success', `Test WhatsApp message sent to ${test_number}.`);
+  } else if (result.reason === 'not_connected') {
+    req.flash('error', 'WhatsApp is not connected yet - scan the QR code first, then try the test again.');
+  } else if (result.reason === 'no_number') {
+    req.flash('error', 'Enter a valid WhatsApp number (country code + number, digits only).');
+  } else {
+    req.flash('error', `Test message failed: ${result.reason}`);
+  }
   res.redirect('/admin/whatsapp');
 });
 

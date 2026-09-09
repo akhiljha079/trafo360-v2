@@ -31,9 +31,9 @@ router.get('/admin/gtp-schema', requireAuth, adminOnly, async (req, res) => {
 router.post('/admin/gtp-schema/types', requireAuth, adminOnly,
   [body('name').trim().notEmpty().withMessage('Type name is required.').isLength({ max: 100 })],
   validate, async (req, res) => {
-    const { name, sequence_order } = req.body;
+    const { name, sequence_order, warranty_months } = req.body;
     try {
-      await pool.query('INSERT INTO transformer_types (name, sequence_order) VALUES (?,?)', [name, sequence_order || 0]);
+      await pool.query('INSERT INTO transformer_types (name, sequence_order, warranty_months) VALUES (?,?,?)', [name, sequence_order || 0, warranty_months || 12]);
       req.flash('success', `Transformer type "${name}" added.`);
     } catch (err) {
       req.log?.error({ err }, 'transformer type creation failed');
@@ -47,6 +47,16 @@ router.post('/admin/gtp-schema/types/:id/toggle', requireAuth, adminOnly, async 
   req.flash('success', 'Transformer type enabled/disabled.');
   res.redirect('/admin/gtp-schema');
 });
+
+// Warranty period for units of this type - feeds utils/warranty.js when a
+// job of this type is dispatched (marked Completed).
+router.post('/admin/gtp-schema/types/:id/warranty-months', requireAuth, adminOnly,
+  [body('warranty_months').isInt({ min: 1, max: 240 }).withMessage('Warranty period must be a number of months (1-240).')],
+  validate, async (req, res) => {
+    await pool.query('UPDATE transformer_types SET warranty_months=? WHERE id=?', [req.body.warranty_months, req.params.id]);
+    req.flash('success', 'Warranty period updated.');
+    res.redirect('/admin/gtp-schema');
+  });
 
 // ---------------- FIELD GROUPS ----------------
 router.post('/admin/gtp-schema/groups', requireAuth, adminOnly,

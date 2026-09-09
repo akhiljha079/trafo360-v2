@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS transformer_types (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(100) NOT NULL UNIQUE,
   sequence_order INT NOT NULL DEFAULT 0,
+  warranty_months INT NOT NULL DEFAULT 12 COMMENT 'Default warranty period for units of this type, from dispatch date',
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -104,12 +105,44 @@ CREATE TABLE IF NOT EXISTS gtp_fields (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------
+-- CUSTOMERS  (a real customer entity, for the Customer Portal - orders/jobs
+-- keep their own free-text customer_name for display/back-compat; linking
+-- an order to a row here is what makes it visible in that customer's portal)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS customers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  contact_email VARCHAR(150) DEFAULT NULL,
+  contact_phone VARCHAR(30) DEFAULT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- CUSTOMER PORTAL USERS  (separate login/session namespace from `users` -
+-- a customer login is a different trust boundary, not an internal role, so
+-- it deliberately doesn't go through roles/role_permissions at all)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS customer_users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id INT NOT NULL,
+  name VARCHAR(120) NOT NULL,
+  email VARCHAR(150) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  must_change_password TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
 -- ORDERS  (a customer order, e.g. "50 x 10MVA transformers" - one GTP/design)
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS orders (
   id INT AUTO_INCREMENT PRIMARY KEY,
   order_no VARCHAR(60) NOT NULL UNIQUE,
   customer_name VARCHAR(150) NOT NULL,
+  customer_id INT DEFAULT NULL COMMENT 'Optional link to customers - required for this order to appear in the Customer Portal',
   po_no VARCHAR(80) DEFAULT NULL,
   transformer_type VARCHAR(100) NOT NULL COMMENT 'Free text matching a transformer_types.name - see Admin > Transformer Types',
   rating VARCHAR(100) DEFAULT NULL,
@@ -121,7 +154,8 @@ CREATE TABLE IF NOT EXISTS orders (
   created_by INT DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (created_by) REFERENCES users(id)
+  FOREIGN KEY (created_by) REFERENCES users(id),
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------
@@ -153,6 +187,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   job_no VARCHAR(60) NOT NULL UNIQUE,
   po_no VARCHAR(80) DEFAULT NULL,
   customer_name VARCHAR(150) NOT NULL,
+  customer_id INT DEFAULT NULL COMMENT 'Copied from the order when created via a Lot; set directly for a standalone job - see customers table',
   transformer_type VARCHAR(100) NOT NULL COMMENT 'Free text matching a transformer_types.name - see Admin > Transformer Types',
   rating VARCHAR(100) DEFAULT NULL,
   serial_no VARCHAR(80) DEFAULT NULL,
@@ -166,7 +201,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
   FOREIGN KEY (lot_id) REFERENCES lots(id) ON DELETE SET NULL,
   FOREIGN KEY (current_stage_id) REFERENCES stages(id),
-  FOREIGN KEY (created_by) REFERENCES users(id)
+  FOREIGN KEY (created_by) REFERENCES users(id),
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------
@@ -220,6 +256,57 @@ CREATE TABLE IF NOT EXISTS job_stage_history (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------
+-- WARRANTIES  (one row per job, created automatically when the job is
+-- marked Completed - see routes/jobs.js advance handler / utils/warranty.js)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS warranties (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  job_id INT NOT NULL UNIQUE,
+  start_date DATE NOT NULL COMMENT 'Dispatch/completion date',
+  duration_months INT NOT NULL,
+  end_date DATE NOT NULL,
+  status ENUM('Active','Expiring','Expired','Void') NOT NULL DEFAULT 'Active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- WARRANTY CLAIMS  (customer complaint -> investigation -> resolution)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS warranty_claims (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  warranty_id INT NOT NULL,
+  claim_no VARCHAR(60) NOT NULL UNIQUE,
+  raised_by INT DEFAULT NULL,
+  customer_complaint VARCHAR(1000) NOT NULL,
+  raised_date DATE NOT NULL,
+  status ENUM('Open','Investigating','Resolved','Rejected','Closed') NOT NULL DEFAULT 'Open',
+  assigned_to INT DEFAULT NULL,
+  site_visit_date DATE DEFAULT NULL,
+  resolution_notes VARCHAR(1000) DEFAULT NULL,
+  resolved_date DATE DEFAULT NULL,
+  closed_date DATE DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (warranty_id) REFERENCES warranties(id) ON DELETE CASCADE,
+  FOREIGN KEY (raised_by) REFERENCES users(id),
+  FOREIGN KEY (assigned_to) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- WARRANTY CLAIM PARTS  (spares used while resolving a claim, if any)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS warranty_claim_parts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  claim_id INT NOT NULL,
+  part_name VARCHAR(200) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  notes VARCHAR(300) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (claim_id) REFERENCES warranty_claims(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
 -- NOTIFICATION RULES  (admin decides: this stage's start/complete emails go to these roles/users)
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS notification_rules (
@@ -241,7 +328,7 @@ CREATE TABLE IF NOT EXISTS notification_rules (
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS email_log (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  category ENUM('Workflow Stage','Document Issue','System') NOT NULL DEFAULT 'Workflow Stage',
+  category ENUM('Workflow Stage','Document Issue','Warranty','System') NOT NULL DEFAULT 'Workflow Stage',
   channel ENUM('Email','WhatsApp') NOT NULL DEFAULT 'Email',
   job_id INT DEFAULT NULL,
   document_issue_id INT DEFAULT NULL,
@@ -259,7 +346,8 @@ CREATE TABLE IF NOT EXISTS email_log (
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS document_categories (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  name VARCHAR(120) NOT NULL UNIQUE
+  name VARCHAR(120) NOT NULL UNIQUE,
+  category_type ENUM('operational','accounting') NOT NULL DEFAULT 'operational' COMMENT 'accounting = shown under the Accounting module instead of the general Document Library'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------
@@ -277,6 +365,9 @@ CREATE TABLE IF NOT EXISTS documents (
   storage_location VARCHAR(150) DEFAULT NULL COMMENT 'Physical rack/shelf/cabinet reference, if a physical file',
   file_path VARCHAR(500) DEFAULT NULL COMMENT 'Uploaded scanned copy, if any',
   qr_token VARCHAR(64) DEFAULT NULL UNIQUE COMMENT 'Random token encoded in this document''s QR label for physical file tracking',
+  related_warranty_claim_id INT DEFAULT NULL COMMENT 'Set for photos/reports attached to a Warranty claim',
+  customer_visible TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Shown in the Customer Portal if this document''s job/order belongs to a linked customer',
+  ocr_text LONGTEXT DEFAULT NULL COMMENT 'Best-effort text extracted from an uploaded image via Tesseract OCR - see utils/ocr.js. NULL until processed or if unsupported/failed.',
   uploaded_by INT DEFAULT NULL,
   upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   current_status ENUM('Available','Issued','Archived') NOT NULL DEFAULT 'Available',
@@ -285,6 +376,7 @@ CREATE TABLE IF NOT EXISTS documents (
   FOREIGN KEY (related_job_id) REFERENCES jobs(id) ON DELETE SET NULL,
   FOREIGN KEY (related_order_id) REFERENCES orders(id) ON DELETE SET NULL,
   FOREIGN KEY (related_lot_id) REFERENCES lots(id) ON DELETE SET NULL,
+  FOREIGN KEY (related_warranty_claim_id) REFERENCES warranty_claims(id) ON DELETE SET NULL,
   FOREIGN KEY (uploaded_by) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -409,6 +501,40 @@ CREATE TABLE IF NOT EXISTS user_dashboard_widgets (
   sequence_order INT NOT NULL DEFAULT 0,
   UNIQUE KEY uniq_user_widget (user_id, widget_key),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- MODULES  (Sales/Manufacturing/Dispatch/Documents/Warranty/Accounting/
+-- Reports - the units that per-role permissions are granted against)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS modules (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  module_key VARCHAR(40) NOT NULL UNIQUE,
+  name VARCHAR(80) NOT NULL,
+  icon VARCHAR(40) DEFAULT NULL COMMENT 'Bootstrap Icons class suffix, e.g. bi-truck',
+  sequence_order INT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- ROLE PERMISSIONS  (granular per-module View/Create/Edit/Delete/Approve -
+-- replaces the old flat can_manage_jobs/can_manage_documents/
+-- can_approve_document_issue flags on `roles`, which are left in place
+-- unread for rollback safety. is_admin/is_director/can_view_confidential on
+-- `roles` remain the cross-cutting flags they always were - not per-module.)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS role_permissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  role_id INT NOT NULL,
+  module_id INT NOT NULL,
+  can_view TINYINT(1) NOT NULL DEFAULT 0,
+  can_create TINYINT(1) NOT NULL DEFAULT 0,
+  can_edit TINYINT(1) NOT NULL DEFAULT 0,
+  can_delete TINYINT(1) NOT NULL DEFAULT 0,
+  can_approve TINYINT(1) NOT NULL DEFAULT 0,
+  UNIQUE KEY uniq_role_module (role_id, module_id),
+  FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+  FOREIGN KEY (module_id) REFERENCES modules(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 SET FOREIGN_KEY_CHECKS = 1;

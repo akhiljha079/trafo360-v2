@@ -11,17 +11,11 @@
   </div>
 
   <div class="login-form-side">
-    <div class="login-card">
+    <div class="login-card" data-animate>
       <div class="text-center mb-3">
         <div class="login-title"><%= typeof appName !== 'undefined' ? appName : 'TRAFO 360' %></div>
         <div class="text-muted small">Workflow &amp; Document Management &mdash; Trafo Power &amp; Electricals Pvt. Ltd.</div>
       </div>
-      <% if (typeof success !== 'undefined' && success.length) { %>
-        <% success.forEach(function(m) { %><div class="alert alert-success py-2"><%= m %></div><% }); %>
-      <% } %>
-      <% if (typeof error !== 'undefined' && error.length) { %>
-        <% error.forEach(function(m) { %><div class="alert alert-danger py-2"><%= m %></div><% }); %>
-      <% } %>
       <form action="/login" method="POST">
         <input type="hidden" name="next" value="<%= typeof next !== 'undefined' ? next : '' %>">
         <div class="mb-3">

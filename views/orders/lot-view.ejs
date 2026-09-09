@@ -13,8 +13,8 @@
   <div class="card-header">Manufacturing Progress Matrix</div>
   <div class="card-body">
     <p class="text-muted small">How many of the <%= units.length %> units in this lot have completed each stage &mdash; this answers "how many tanks are prepared, how many painted, how many wound," etc.</p>
-    <% matrix.forEach(function(m) { %>
-      <div class="mb-2">
+    <% matrix.forEach(function(m, i) { %>
+      <div class="mb-2" data-animate style="transition-delay: <%= Math.min(i, 12) * 25 %>ms;">
         <div class="d-flex justify-content-between small mb-1">
           <span><span class="badge badge-phase-<%= m.stage.phase %>"><%= m.stage.stage_code %></span> <%= m.stage.stage_name %></span>
           <span><b><%= m.completed %></b> / <%= m.total %> completed <% if (m.inProgress) { %><span class="text-muted">(<%= m.inProgress %> in progress)</span><% } %></span>

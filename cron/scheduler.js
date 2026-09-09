@@ -13,6 +13,7 @@ const {
   notifyOverdueGrace,
   notifyEscalation
 } = require('../utils/documentNotify');
+const { notifyWarrantyExpiring } = require('../utils/warrantyNotify');
 
 function todayStr() {
   const d = new Date();
@@ -74,10 +75,31 @@ async function runDailyDocumentCheck() {
   console.log('[cron] Document reminder/escalation check complete.');
 }
 
+// Flips Active -> Expiring -> Expired as each warranty's end_date approaches/
+// passes, notifying once per transition (not daily) since `status` only
+// changes once per crossing.
+async function runDailyWarrantyCheck() {
+  console.log(`[cron] Running warranty expiry check @ ${new Date().toISOString()}`);
+  const expiringDaysBefore = Number(await getSetting('warranty_expiring_days_before', '60'));
+
+  const [expiring] = await pool.query(
+    `SELECT id FROM warranties WHERE status='Active' AND end_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)`,
+    [expiringDaysBefore]
+  );
+  for (const w of expiring) {
+    await pool.query(`UPDATE warranties SET status='Expiring' WHERE id=?`, [w.id]);
+    try { await notifyWarrantyExpiring(w.id); } catch (err) { console.error(`[cron] warranty expiring notify #${w.id}:`, err.message); }
+  }
+
+  await pool.query(`UPDATE warranties SET status='Expired' WHERE status IN ('Active','Expiring') AND end_date < CURDATE()`);
+  console.log('[cron] Warranty expiry check complete.');
+}
+
 function startScheduler() {
   // Daily at 09:00 server time. Change the cron expression as needed.
   cron.schedule('0 9 * * *', runDailyDocumentCheck);
-  console.log('[cron] Daily document reminder/escalation scheduler started (09:00 server time).');
+  cron.schedule('0 9 * * *', runDailyWarrantyCheck);
+  console.log('[cron] Daily document reminder/escalation + warranty expiry scheduler started (09:00 server time).');
 }
 
-module.exports = { startScheduler, runDailyDocumentCheck };
+module.exports = { startScheduler, runDailyDocumentCheck, runDailyWarrantyCheck };

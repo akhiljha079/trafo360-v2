@@ -1,3 +1,12 @@
+<%
+  // The job's current stage determines which module governs stage-transition
+  // actions (advance/set-stage) - matches requireJobPhaseModule() in
+  // middleware/auth.js, since one job flows through all three phases.
+  var jobModuleKey = job.phase === 'Sales' ? 'sales' : job.phase === 'Dispatch' ? 'dispatch' : 'manufacturing';
+  function canEdit(key) { return currentUser.is_admin || (currentUser.permissions[key] && currentUser.permissions[key].edit); }
+  function canDelete(key) { return currentUser.is_admin || (currentUser.permissions[key] && currentUser.permissions[key].delete); }
+  var warrantyBadge = warranty ? { Active: 'bg-success', Expiring: 'bg-warning text-dark', Expired: 'bg-danger', Void: 'bg-secondary' }[warranty.status] : null;
+%>
 <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
   <div>
     <% if (job.order_no) { %>
@@ -8,25 +17,39 @@
     <div class="mt-2">
       <span class="badge badge-rag-<%= rag %>"><%= ragLabel %></span>
       <span class="badge bg-secondary"><%= job.status %></span>
+      <% if (warranty) { %>
+        <a href="/warranty/<%= warranty.id %>" class="badge <%= warrantyBadge %> text-decoration-none"><i class="bi bi-shield-check"></i> Warranty: <%= warranty.status %></a>
+      <% } %>
     </div>
     <div class="mt-2">
       <form action="/jobs/<%= job.id %>/target-date" method="POST" class="d-flex align-items-center gap-2">
         <label class="small text-muted mb-0">Target Dispatch Date:</label>
-        <input type="date" name="target_dispatch_date" class="form-control form-control-sm" style="width:160px;" value="<%= job.target_dispatch_date || '' %>" <%= currentUser.can_manage_jobs ? '' : 'disabled' %>>
-        <% if (currentUser.can_manage_jobs) { %><button class="btn btn-sm btn-outline-secondary" type="submit">Save</button><% } %>
+        <input type="date" name="target_dispatch_date" class="form-control form-control-sm" style="width:160px;" value="<%= job.target_dispatch_date || '' %>" <%= canEdit('manufacturing') ? '' : 'disabled' %>>
+        <% if (canEdit('manufacturing')) { %><button class="btn btn-sm btn-outline-secondary" type="submit">Save</button><% } %>
       </form>
     </div>
-    <% if (currentUser.can_manage_jobs) { %>
+    <% if (canEdit('manufacturing') || canDelete('manufacturing')) { %>
       <div class="mt-2">
-        <a href="/jobs/<%= job.id %>/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i> Edit</a>
+        <% if (canEdit('manufacturing')) { %><a href="/jobs/<%= job.id %>/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i> Edit</a><% } %>
+        <% if (canDelete('manufacturing')) { %>
         <form action="/jobs/<%= job.id %>/delete" method="POST" class="d-inline" onsubmit="return confirm('Delete this job? Stage history is preserved for audit but the job will be archived.')">
           <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i> Delete</button>
         </form>
+        <% } %>
       </div>
     <% } %>
   </div>
   <%- include('../partials/transformer-status', { pct: progressPct, phase: job.phase, rag: rag, size: 'lg', caption: progressPct + '% built' }) %>
 </div>
+
+<ul class="nav tabs-modern mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-overview" type="button"><i class="bi bi-speedometer2"></i> Overview</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-documents" type="button"><i class="bi bi-folder2-open"></i> Documents<% if (missingMandatory.length) { %> <span class="badge bg-danger"><%= missingMandatory.length %></span><% } %></button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-history" type="button"><i class="bi bi-clock-history"></i> Stage History</button></li>
+</ul>
+
+<div class="tab-content">
+<div class="tab-pane fade show active" id="tab-overview">
 
 <div class="card mb-3">
   <div class="card-header">Workflow Progress</div>
@@ -44,7 +67,7 @@
       <% if (job.stage_name) { %><span class="badge badge-phase-<%= job.phase %>"><%= job.stage_code %> - <%= job.stage_name %></span><% } else { %>Not started<% } %>
     </p>
 
-    <% if (currentUser.can_manage_jobs && job.status === 'Active') { %>
+    <% if (canEdit(jobModuleKey) && job.status === 'Active') { %>
     <div class="mt-3 d-flex flex-wrap gap-2">
       <form action="/jobs/<%= job.id %>/advance" method="POST" class="d-flex gap-2">
         <input type="text" name="remarks" class="form-control form-control-sm" placeholder="Remarks (optional)" style="width:260px;">
@@ -72,7 +95,7 @@
         <button class="btn btn-sm btn-outline-danger" type="submit" onclick="return confirm('Cancel this job?')">Cancel Job</button>
       </form>
     </div>
-    <% } else if (currentUser.can_manage_jobs && job.status !== 'Active') { %>
+    <% } else if (canEdit(jobModuleKey) && job.status !== 'Active') { %>
       <form action="/jobs/<%= job.id %>/status" method="POST" class="mt-2">
         <input type="hidden" name="status" value="Active">
         <button class="btn btn-sm btn-outline-success" type="submit">Reactivate Job</button>
@@ -80,6 +103,10 @@
     <% } %>
   </div>
 </div>
+
+</div>
+
+<div class="tab-pane fade" id="tab-documents">
 
 <% if (requirements.length > 0) { %>
 <div class="card mb-3">
@@ -120,30 +147,8 @@
 <% } %>
 
 <div class="row g-3">
-  <div class="col-lg-7">
+  <div class="col-lg-6">
     <div class="card">
-      <div class="card-header">Stage History</div>
-      <div class="table-responsive">
-        <table class="table table-sm mb-0">
-          <thead><tr><th>Date/Time</th><th>Stage</th><th>Event</th><th>By</th><th>Remarks</th></tr></thead>
-          <tbody>
-          <% history.forEach(function(h) { %>
-            <tr>
-              <td class="small"><%= h.action_at %></td>
-              <td><span class="badge badge-phase-<%= h.phase %>"><%= h.stage_name %></span></td>
-              <td><%= h.event %></td>
-              <td><%= h.updated_by_name || '-' %></td>
-              <td class="small text-muted"><%= h.remarks || '' %></td>
-            </tr>
-          <% }); %>
-          <% if (history.length === 0) { %><tr><td colspan="5" class="text-center text-muted py-3">No history yet.</td></tr><% } %>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  <div class="col-lg-5">
-    <div class="card mb-3">
       <div class="card-header">Linked Documents</div>
       <div class="card-body">
         <% if (documents.length === 0) { %><p class="text-muted mb-0">No documents linked to this job yet.</p><% } %>
@@ -158,7 +163,8 @@
         <% }); %>
       </div>
     </div>
-
+  </div>
+  <div class="col-lg-6">
     <% if (genDocTypes && genDocTypes.length) { %>
     <div class="card">
       <div class="card-header"><i class="bi bi-file-earmark-pdf"></i> Generate Document</div>
@@ -174,4 +180,32 @@
     </div>
     <% } %>
   </div>
+</div>
+
+</div>
+
+<div class="tab-pane fade" id="tab-history">
+
+<div class="card">
+  <div class="card-header">Stage History</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>Date/Time</th><th>Stage</th><th>Event</th><th>By</th><th>Remarks</th></tr></thead>
+      <tbody>
+      <% history.forEach(function(h) { %>
+        <tr>
+          <td class="small"><%= h.action_at %></td>
+          <td><span class="badge badge-phase-<%= h.phase %>"><%= h.stage_name %></span></td>
+          <td><%= h.event %></td>
+          <td><%= h.updated_by_name || '-' %></td>
+          <td class="small text-muted"><%= h.remarks || '' %></td>
+        </tr>
+      <% }); %>
+      <% if (history.length === 0) { %><tr><td colspan="5" class="text-center text-muted py-3">No history yet.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
 </div>

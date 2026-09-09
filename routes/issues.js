@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../config/db');
-const { requireAuth, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireModule } = require('../middleware/auth');
 const {
   notifyApprovalRequested,
   notifyApprovalDecision,
@@ -23,7 +23,8 @@ router.get('/issues', requireAuth, async (req, res) => {
              JOIN users req ON di.requested_by=req.id
              LEFT JOIN users ap ON di.approver_id=ap.id`;
   const params = [];
-  if (!u.can_manage_documents && !u.can_approve_document_issue) {
+  const canSeeAll = u.is_admin || (u.permissions.documents && (u.permissions.documents.edit || u.permissions.documents.approve));
+  if (!canSeeAll) {
     sql += ' WHERE di.requested_by=?';
     params.push(u.id);
   }
@@ -74,7 +75,7 @@ router.get('/issues/:id', requireAuth, async (req, res) => {
 });
 
 // APPROVE / REJECT (Director or role with can_approve_document_issue)
-router.post('/issues/:id/decision', requireAuth, requirePermission('can_approve_document_issue'), async (req, res) => {
+router.post('/issues/:id/decision', requireAuth, requireModule('documents', 'approve'), async (req, res) => {
   const { decision, remarks, signature } = req.body; // decision = 'approve' | 'reject'
   const issueId = req.params.id;
   try {
@@ -114,7 +115,7 @@ router.post('/issues/:id/decision', requireAuth, requirePermission('can_approve_
 });
 
 // MARK RETURNED (Documents Coordinator)
-router.post('/issues/:id/return', requireAuth, requirePermission('can_manage_documents'), async (req, res) => {
+router.post('/issues/:id/return', requireAuth, requireModule('documents', 'edit'), async (req, res) => {
   const issueId = req.params.id;
   try {
     const [[issue]] = await pool.query('SELECT * FROM document_issues WHERE id=?', [issueId]);
@@ -150,7 +151,7 @@ router.post('/issues/:id/extend', requireAuth, async (req, res) => {
 });
 
 // DECIDE EXTENSION (approver)
-router.post('/issues/:id/extend/:extId/decision', requireAuth, requirePermission('can_approve_document_issue'), async (req, res) => {
+router.post('/issues/:id/extend/:extId/decision', requireAuth, requireModule('documents', 'approve'), async (req, res) => {
   const { decision, signature } = req.body; // 'approve' | 'reject'
   const { id: issueId, extId } = req.params;
   try {

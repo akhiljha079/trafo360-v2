@@ -1,0 +1,68 @@
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-receipt"></i> Accounting Documents</h4>
+  <div class="d-flex align-items-center gap-2">
+    <div class="btn-group view-toggle" data-view-toggle="accounting" data-view-table="accountingTable" data-view-grid="accountingGrid" role="group" aria-label="View mode">
+      <button type="button" class="btn btn-outline-secondary" data-view-mode="table" title="Table view"><i class="bi bi-table"></i></button>
+      <button type="button" class="btn btn-outline-secondary" data-view-mode="grid" title="Grid view"><i class="bi bi-grid-3x3-gap"></i></button>
+    </div>
+    <% if (currentUser.is_admin || (currentUser.permissions.accounting && currentUser.permissions.accounting.create)) { %>
+      <a href="/accounting/new" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Document</a>
+    <% } %>
+  </div>
+</div>
+<p class="text-muted small">Invoices, payment receipts, e-way bills, and vendor POs collected here for reference - accounting itself (ledgers, tax, GST) is handled outside this system.</p>
+
+<form class="row g-2 mb-3" method="GET">
+  <div class="col-md-4">
+    <input type="text" name="q" class="form-control" placeholder="Search Doc Code / Name" value="<%= filters.q || '' %>">
+  </div>
+  <div class="col-md-4">
+    <select name="category_id" class="form-select">
+      <option value="">All Categories</option>
+      <% categories.forEach(function(c) { %>
+        <option value="<%= c.id %>" <%= String(filters.category_id)===String(c.id)?'selected':'' %>><%= c.name %></option>
+      <% }); %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-outline-secondary w-100" type="submit">Filter</button>
+  </div>
+</form>
+
+<div id="accountingTable" class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead><tr><th>Doc Code</th><th>Name</th><th>Category</th><th>Linked</th><th>Uploaded</th><th></th></tr></thead>
+      <tbody>
+      <% documents.forEach(function(d) { %>
+        <tr>
+          <td><%= d.doc_code %></td>
+          <td><%= d.doc_name %></td>
+          <td><%= d.category_name %></td>
+          <td class="small"><%= d.order_no || d.job_no || '-' %></td>
+          <td class="small"><%= d.upload_date %></td>
+          <td><a href="/documents/<%= d.id %>" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+      <% }); %>
+      <% if (documents.length === 0) { %><tr><td colspan="6" class="text-center text-muted py-4">No accounting documents yet.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="accountingGrid" class="entity-card-grid" hidden>
+  <% documents.forEach(function(d, i) { %>
+    <a href="/documents/<%= d.id %>" class="entity-card" data-animate style="transition-delay: <%= Math.min(i, 10) * 30 %>ms;">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-card-title"><%= d.doc_code %></div>
+          <div class="entity-card-meta"><%= d.doc_name %></div>
+        </div>
+        <i class="bi bi-receipt fs-4" style="color: var(--tp-accounting);"></i>
+      </div>
+      <div class="entity-card-meta"><%= d.category_name %></div>
+      <div class="entity-card-meta"><%= d.order_no || d.job_no || 'No link' %> &middot; <%= d.upload_date %></div>
+    </a>
+  <% }); %>
+  <% if (documents.length === 0) { %><p class="text-muted text-center py-4">No accounting documents yet.</p><% } %>
+</div>

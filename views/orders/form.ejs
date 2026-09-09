@@ -20,6 +20,16 @@
           <input type="text" name="po_no" class="form-control" value="<%= order && order.po_no ? order.po_no : '' %>">
         </div>
         <div class="col-md-4">
+          <label class="form-label">Customer Portal Account</label>
+          <select name="customer_id" class="form-select">
+            <option value="">-- Not linked (no portal access) --</option>
+            <% customers.forEach(function(c) { %>
+              <option value="<%= c.id %>" <%= order && String(order.customer_id) === String(c.id) ? 'selected' : '' %>><%= c.name %></option>
+            <% }); %>
+          </select>
+          <div class="form-text">Optional - link to let this customer track this order in the <a href="/admin/customers" target="_blank">Customer Portal</a>.</div>
+        </div>
+        <div class="col-md-4">
           <label class="form-label">Transformer Type *</label>
           <select name="transformer_type" class="form-select" required
             onchange="if(confirm('Switch transformer type? This reloads the page and any unsaved changes on this form will be lost.')) location.href = '<%= order ? '/orders/' + order.id + '/edit' : '/orders/new' %>?transformer_type=' + encodeURIComponent(this.value); else this.value='<%= selectedType %>';">

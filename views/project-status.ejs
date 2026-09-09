@@ -1,44 +1,52 @@
-<h4 class="mb-3">Project Status</h4>
-<p class="text-muted small mb-3">Overall progress and delivery risk for every transformer job, based on its current stage and target dispatch date.</p>
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <h4 class="mb-1">Project Status</h4>
+    <p class="text-muted small mb-0">Overall progress and delivery risk for every transformer job, based on its current stage and target dispatch date.</p>
+  </div>
+  <div class="btn-group view-toggle" data-view-toggle="project-status" data-view-table="statusTable" data-view-grid="statusGrid" role="group" aria-label="View mode">
+    <button type="button" class="btn btn-outline-secondary" data-view-mode="table" title="Table view"><i class="bi bi-table"></i></button>
+    <button type="button" class="btn btn-outline-secondary" data-view-mode="grid" title="Grid view"><i class="bi bi-grid-3x3-gap"></i></button>
+  </div>
+</div>
 
 <div class="row g-3 mb-4">
   <div class="col-md-2 col-6">
-    <div class="card p-3 text-center">
+    <div class="card p-3 text-center" data-animate>
       <div class="rag-dot rag-green mx-auto mb-1"></div>
       <div class="fs-4 fw-bold"><%= summary.green %></div>
       <div class="text-muted small">On Track</div>
     </div>
   </div>
   <div class="col-md-2 col-6">
-    <div class="card p-3 text-center">
+    <div class="card p-3 text-center" data-animate>
       <div class="rag-dot rag-amber mx-auto mb-1"></div>
       <div class="fs-4 fw-bold"><%= summary.amber %></div>
       <div class="text-muted small">At Risk</div>
     </div>
   </div>
   <div class="col-md-2 col-6">
-    <div class="card p-3 text-center">
+    <div class="card p-3 text-center" data-animate>
       <div class="rag-dot rag-red mx-auto mb-1"></div>
       <div class="fs-4 fw-bold"><%= summary.red %></div>
       <div class="text-muted small">Delayed</div>
     </div>
   </div>
   <div class="col-md-2 col-6">
-    <div class="card p-3 text-center">
+    <div class="card p-3 text-center" data-animate>
       <div class="rag-dot rag-gray mx-auto mb-1"></div>
       <div class="fs-4 fw-bold"><%= summary.gray %></div>
       <div class="text-muted small">No Target / On Hold</div>
     </div>
   </div>
   <div class="col-md-4 col-12">
-    <div class="card p-3 text-center">
+    <div class="card p-3 text-center" data-animate>
       <div class="fs-4 fw-bold text-danger"><%= summary.stalled %></div>
       <div class="text-muted small">Stalled 10+ days in current stage</div>
     </div>
   </div>
 </div>
 
-<div class="card">
+<div id="statusTable" class="card">
   <div class="table-responsive">
     <table class="table table-hover mb-0 align-middle">
       <thead>
@@ -73,4 +81,27 @@
       </tbody>
     </table>
   </div>
+</div>
+
+<div id="statusGrid" class="entity-card-grid" hidden>
+  <% rows.forEach(function(r, i) { %>
+    <a href="/jobs/<%= r.id %>" class="entity-card" data-animate style="transition-delay: <%= Math.min(i, 10) * 30 %>ms;">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-card-title"><%= r.job_no %></div>
+          <div class="entity-card-meta"><%= r.customer_name %></div>
+        </div>
+        <span class="badge badge-rag-<%= r.rag %>"><%= r.ragLabel %></span>
+      </div>
+      <div class="entity-card-visual">
+        <%- include('partials/transformer-status', { pct: r.progressPct, phase: r.phase, rag: r.rag, size: 'sm' }) %>
+      </div>
+      <div class="entity-card-meta"><%= r.transformer_type %></div>
+      <div class="d-flex justify-content-between align-items-center">
+        <span class="small text-muted"><% if (r.daysInStage !== null) { %><%= r.daysInStage %>d in stage<% if (r.stalled) { %> <i class="bi bi-exclamation-triangle-fill text-danger" title="Stalled 10+ days"></i><% } %><% } %></span>
+        <span class="small text-muted"><%= r.target_dispatch_date || 'No target' %></span>
+      </div>
+    </a>
+  <% }); %>
+  <% if (rows.length === 0) { %><p class="text-muted text-center py-4">No jobs yet.</p><% } %>
 </div>

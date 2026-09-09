@@ -1,10 +1,10 @@
 const express = require('express');
 const pool = require('../config/db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, hasModulePermission } = require('../middleware/auth');
 const router = express.Router();
 
 function canViewAnalytics(user) {
-  return user.is_admin || user.is_director || user.can_manage_jobs || user.can_manage_documents;
+  return hasModulePermission(user, 'reports', 'view');
 }
 
 router.get('/analytics', requireAuth, async (req, res) => {

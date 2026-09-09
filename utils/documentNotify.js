@@ -4,6 +4,7 @@
 const pool = require('../config/db');
 const { sendMail } = require('../config/mailer');
 const { sendWhatsAppMessage, getStatus: getWhatsAppStatus } = require('./whatsapp');
+const { usersWithModulePermission } = require('./permissionRecipients');
 
 function wrap(title, bodyHtml) {
   return `
@@ -43,6 +44,12 @@ async function sendWA(issueId, person, subject, plainText) {
   await log(issueId, 'WhatsApp', person.whatsapp_number, subject, plainText, result.sent ? 'Sent' : 'Failed', result.sent ? null : result.reason);
 }
 
+// Users whose role can perform `action` ('approve' or 'edit') on the
+// Documents module - see utils/permissionRecipients.js.
+function usersWithDocumentPermission(action) {
+  return usersWithModulePermission('documents', action);
+}
+
 async function getIssueBundle(issueId) {
   const [[issue]] = await pool.query('SELECT * FROM document_issues WHERE id=?', [issueId]);
   if (!issue) return null;
@@ -58,10 +65,7 @@ async function getIssueBundle(issueId) {
 // 1) New issue request submitted -> notify approver(s) (Director / role with can_approve_document_issue)
 async function notifyApprovalRequested(issueId) {
   const { issue, doc, requester } = await getIssueBundle(issueId);
-  const [approvers] = await pool.query(
-    `SELECT u.email, u.whatsapp_number FROM users u JOIN roles r ON u.role_id=r.id
-     WHERE r.can_approve_document_issue=1 AND u.is_active=1`
-  );
+  const approvers = await usersWithDocumentPermission('approve');
   const subject = `Approval Needed: Document Issue Request - ${doc.doc_code} (${doc.doc_name})`;
   const html = wrap('Document Issue - Approval Required', `
     <p><b>${requester.name}</b> has requested to issue the following document:</p>
@@ -110,9 +114,7 @@ async function notifyReminder(issueId, whenLabel) {
   await sendWA(issueId, requester, subject, waText);
 
   // Also copy the Documents Coordinator
-  const [coordinators] = await pool.query(
-    `SELECT u.email, u.whatsapp_number FROM users u JOIN roles r ON u.role_id=r.id WHERE r.can_manage_documents=1 AND u.is_active=1`
-  );
+  const coordinators = await usersWithDocumentPermission('edit');
   for (const c of coordinators) {
     await send(issueId, c.email, subject, html);
     await sendWA(issueId, c, subject, waText);
@@ -131,9 +133,7 @@ async function notifyOverdueGrace(issueId, workingDaysOverdue) {
   const waText = `*OVERDUE Document* (Grace Day ${workingDaysOverdue})\n${doc.doc_code} - ${doc.doc_name}\nDue: ${issue.due_date}\nWill auto-escalate to Director if not returned/extended within the grace period.`;
   await send(issueId, requester.email, subject, html);
   await sendWA(issueId, requester, subject, waText);
-  const [coordinators] = await pool.query(
-    `SELECT u.email, u.whatsapp_number FROM users u JOIN roles r ON u.role_id=r.id WHERE r.can_manage_documents=1 AND u.is_active=1`
-  );
+  const coordinators = await usersWithDocumentPermission('edit');
   for (const c of coordinators) {
     await send(issueId, c.email, subject, html);
     await sendWA(issueId, c, subject, waText);
@@ -163,9 +163,7 @@ async function notifyEscalation(issueId) {
 async function notifyExtensionRequested(issueId, extensionId) {
   const { issue, doc, requester } = await getIssueBundle(issueId);
   const [[ext]] = await pool.query('SELECT * FROM issue_extensions WHERE id=?', [extensionId]);
-  const [approvers] = await pool.query(
-    `SELECT u.email, u.whatsapp_number FROM users u JOIN roles r ON u.role_id=r.id WHERE r.can_approve_document_issue=1 AND u.is_active=1`
-  );
+  const approvers = await usersWithDocumentPermission('approve');
   const subject = `Approval Needed: Extension Request - ${doc.doc_code}`;
   const html = wrap('Document Issue - Extension Approval Required', `
     <p><b>${requester.name}</b> has requested an extension for document

@@ -1,16 +1,30 @@
-<h4 class="mb-3">GTP Schema</h4>
+<h4 class="mb-1">GTP Schema</h4>
 <p class="text-muted">This is the source of truth for the GTP (General Technical Particulars) form shown when creating/editing an Order, the department work orders, and (once generated) technical documents. Add, edit, reorder, or disable transformer types, field groups, and fields — every Order form automatically follows whatever is defined here, per transformer type.</p>
+
+<ul class="nav tabs-modern mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-types" type="button"><i class="bi bi-diagram-2"></i> Transformer Types</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-fields" type="button"><i class="bi bi-list-columns"></i> Field Groups &amp; Fields</button></li>
+</ul>
+
+<div class="tab-content">
+<div class="tab-pane fade show active" id="tab-types">
 
 <div class="card mb-4">
   <div class="card-header">Transformer Types</div>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
-      <thead><tr><th>#</th><th>Name</th><th>Active</th></tr></thead>
+      <thead><tr><th>#</th><th>Name</th><th>Warranty (months)</th><th>Active</th></tr></thead>
       <tbody>
       <% transformerTypes.forEach(function(t) { %>
         <tr>
           <td><%= t.sequence_order %></td>
           <td><b><%= t.name %></b></td>
+          <td style="width:180px;">
+            <form action="/admin/gtp-schema/types/<%= t.id %>/warranty-months" method="POST" class="d-flex gap-1">
+              <input type="number" name="warranty_months" class="form-control form-control-sm" value="<%= t.warranty_months %>" min="1" max="240" style="width:80px;">
+              <button class="btn btn-sm btn-outline-secondary" type="submit">Save</button>
+            </form>
+          </td>
           <td>
             <form action="/admin/gtp-schema/types/<%= t.id %>/toggle" method="POST">
               <button class="btn btn-sm <%= t.is_active ? 'btn-outline-success' : 'btn-outline-secondary' %>" type="submit">
@@ -27,10 +41,15 @@
     <form action="/admin/gtp-schema/types" method="POST" class="row g-2">
       <div class="col-md-4"><input type="text" name="name" class="form-control" placeholder="e.g. Rectifier Transformer" required></div>
       <div class="col-md-2"><input type="number" name="sequence_order" class="form-control" placeholder="Order #"></div>
+      <div class="col-md-2"><input type="number" name="warranty_months" class="form-control" placeholder="Warranty (months)" value="18"></div>
       <div class="col-md-2"><button class="btn btn-primary" type="submit">Add Type</button></div>
     </form>
   </div>
 </div>
+
+</div>
+
+<div class="tab-pane fade" id="tab-fields">
 
 <% groups.forEach(function(g) { %>
   <div class="card mb-3">
@@ -157,4 +176,7 @@
       <div class="col-md-1"><button class="btn btn-primary w-100" type="submit">Add</button></div>
     </form>
   </div>
+</div>
+
+</div>
 </div>

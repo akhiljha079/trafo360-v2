@@ -1,6 +1,6 @@
 const express = require('express');
 const pool = require('../config/db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, hasModulePermission } = require('../middleware/auth');
 const { computeRag, computeProgressPct } = require('../utils/jobStatus');
 const { WIDGET_REGISTRY, resolveWidgets } = require('../utils/dashboardWidgets');
 const router = express.Router();
@@ -16,7 +16,47 @@ async function ensureWidgetRows(userId) {
   }
 }
 
+// One cheap count per module, for the dashboard's module-tile home row.
+// Only queried for modules the viewer can actually see (matches the
+// sidebar's own permission gating) so an unauthorized user never even
+// triggers the query, let alone sees the tile.
+async function moduleTileStats(user) {
+  const tiles = [];
+  if (user.is_admin || hasModulePermission(user, 'sales', 'view')) {
+    const [[{ cnt }]] = await pool.query(`SELECT COUNT(*) AS cnt FROM orders WHERE is_deleted=0 AND status='Active'`);
+    tiles.push({ key: 'sales', icon: 'bi-graph-up-arrow', label: 'Active Orders', stat: cnt, href: '/sales' });
+  }
+  if (user.is_admin || hasModulePermission(user, 'manufacturing', 'view')) {
+    const [[{ cnt }]] = await pool.query(`
+      SELECT COUNT(*) AS cnt FROM jobs j JOIN stages s ON j.current_stage_id=s.id
+      WHERE j.is_deleted=0 AND j.status='Active' AND s.phase='Manufacturing'`);
+    tiles.push({ key: 'manufacturing', icon: 'bi-gear-wide-connected', label: 'Units in Manufacturing', stat: cnt, href: '/manufacturing' });
+  }
+  if (user.is_admin || hasModulePermission(user, 'dispatch', 'view')) {
+    const [[{ cnt }]] = await pool.query(`
+      SELECT COUNT(*) AS cnt FROM jobs j JOIN stages s ON j.current_stage_id=s.id
+      WHERE j.is_deleted=0 AND j.status='Active' AND s.phase='Dispatch'`);
+    tiles.push({ key: 'dispatch', icon: 'bi-truck', label: 'Units in Dispatch', stat: cnt, href: '/dispatch' });
+  }
+  if (user.is_admin || hasModulePermission(user, 'documents', 'view')) {
+    const [[{ cnt }]] = await pool.query(`SELECT COUNT(*) AS cnt FROM document_issues WHERE status IN ('Issued','Overdue','Escalated')`);
+    tiles.push({ key: 'documents', icon: 'bi-folder2-open', label: 'Documents Issued/Overdue', stat: cnt, href: '/documents' });
+  }
+  if (user.is_admin || hasModulePermission(user, 'warranty', 'view')) {
+    const [[{ cnt }]] = await pool.query(`SELECT COUNT(*) AS cnt FROM warranty_claims WHERE status IN ('Open','Investigating')`);
+    tiles.push({ key: 'warranty', icon: 'bi-shield-check', label: 'Open Warranty Claims', stat: cnt, href: '/warranty' });
+  }
+  if (user.is_admin || hasModulePermission(user, 'accounting', 'view')) {
+    const [[{ cnt }]] = await pool.query(`
+      SELECT COUNT(*) AS cnt FROM documents d JOIN document_categories c ON d.category_id=c.id
+      WHERE d.is_active=1 AND c.category_type='accounting'`);
+    tiles.push({ key: 'accounting', icon: 'bi-receipt', label: 'Accounting Documents', stat: cnt, href: '/accounting' });
+  }
+  return tiles;
+}
+
 router.get('/dashboard', requireAuth, async (req, res) => {
+  const moduleTiles = await moduleTileStats(req.session.user);
   const [[{ activeJobs }]] = await pool.query(`SELECT COUNT(*) AS activeJobs FROM jobs WHERE status='Active' AND is_deleted=0`);
   const [[{ completedJobs }]] = await pool.query(`SELECT COUNT(*) AS completedJobs FROM jobs WHERE status='Completed' AND is_deleted=0`);
   const [jobsByPhase] = await pool.query(`
@@ -42,7 +82,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
   );
 
   let pendingApprovalList = [];
-  if (req.session.user.can_approve_document_issue) {
+  if (hasModulePermission(req.session.user, 'documents', 'approve')) {
     [pendingApprovalList] = await pool.query(
       `SELECT di.*, d.doc_code, d.doc_name, u.name AS requester_name
        FROM document_issues di JOIN documents d ON di.document_id=d.id JOIN users u ON di.requested_by=u.id
@@ -58,6 +98,7 @@ router.get('/dashboard', requireAuth, async (req, res) => {
 
   res.render('dashboard', {
     title: 'Dashboard',
+    moduleTiles,
     activeJobs, completedJobs, jobsByPhase, recentJobs,
     issuedDocs, overdueDocs, pendingApprovals, myIssues, pendingApprovalList,
     widgets, allWidgetPrefs

@@ -1,7 +1,7 @@
 <h4 class="mb-3">SMTP Settings</h4>
 <p class="text-muted">Configure the mail server used to send all automated emails (stage notifications, document approval requests, reminders, escalations). Changes here take effect immediately without a redeploy.</p>
 
-<div class="card" style="max-width:600px;">
+<div class="card" style="max-width:600px;" data-animate>
   <div class="card-body">
     <form action="/admin/smtp" method="POST">
       <div class="mb-3">
@@ -37,6 +37,17 @@
         <input type="text" name="from_name" class="form-control" value="<%= smtp ? smtp.from_name : 'TRAFO 360 - Trafo Power & Electricals' %>" required>
       </div>
       <button type="submit" class="btn btn-primary">Save SMTP Settings</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mt-3" style="max-width:600px;" data-animate>
+  <div class="card-body">
+    <h6 class="mb-2">Send Test Email</h6>
+    <p class="text-muted small">Sends a real email using the settings currently saved above, so you can confirm they actually work before relying on them.</p>
+    <form action="/admin/smtp/test" method="POST" class="d-flex gap-2">
+      <input type="email" name="test_email" class="form-control" value="<%= currentUser ? currentUser.email : '' %>" placeholder="you@example.com" required>
+      <button type="submit" class="btn btn-outline-primary text-nowrap">Send Test Email</button>
     </form>
   </div>
 </div>

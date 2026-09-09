@@ -1,12 +1,18 @@
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h4 class="mb-0">Orders</h4>
-  <% if (currentUser.can_manage_jobs) { %>
-    <a href="/orders/new" class="btn btn-primary"><i class="bi bi-plus-lg"></i> New Order</a>
-  <% } %>
+  <div class="d-flex align-items-center gap-2">
+    <div class="btn-group view-toggle" data-view-toggle="orders" data-view-table="ordersTable" data-view-grid="ordersGrid" role="group" aria-label="View mode">
+      <button type="button" class="btn btn-outline-secondary" data-view-mode="table" title="Table view"><i class="bi bi-table"></i></button>
+      <button type="button" class="btn btn-outline-secondary" data-view-mode="grid" title="Grid view"><i class="bi bi-grid-3x3-gap"></i></button>
+    </div>
+    <% if (currentUser.is_admin || (currentUser.permissions.sales && currentUser.permissions.sales.create)) { %>
+      <a href="/orders/new" class="btn btn-primary"><i class="bi bi-plus-lg"></i> New Order</a>
+    <% } %>
+  </div>
 </div>
 <p class="text-muted small">An Order represents a customer PO with a fixed GTP/design (e.g. "50 x 10MVA transformers"). Break it into Lots to track manufacturing batch by batch.</p>
 
-<div class="card">
+<div id="ordersTable" class="card">
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead><tr><th>Order No.</th><th>Customer</th><th>Type</th><th>Rating</th><th>Quantity</th><th>Lots</th><th>Units Completed</th><th>Status</th><th></th></tr></thead>
@@ -28,4 +34,25 @@
       </tbody>
     </table>
   </div>
+</div>
+
+<div id="ordersGrid" class="entity-card-grid" hidden>
+  <% orders.forEach(function(o, i) { %>
+    <% var pct = o.unit_count ? Math.round((o.completed_units / o.unit_count) * 100) : 0; %>
+    <a href="/orders/<%= o.id %>" class="entity-card" data-animate style="transition-delay: <%= Math.min(i, 10) * 30 %>ms;">
+      <div class="entity-card-header">
+        <div>
+          <div class="entity-card-title"><%= o.order_no %></div>
+          <div class="entity-card-meta"><%= o.customer_name %></div>
+        </div>
+        <span class="badge bg-secondary"><%= o.status %></span>
+      </div>
+      <div class="entity-card-meta"><%= o.transformer_type %> &middot; Qty <%= o.total_quantity %> &middot; <%= o.lot_count %> lot(s)</div>
+      <div class="mt-1">
+        <div class="progress-track"><div class="progress-fill" style="width:<%= pct %>%;"></div></div>
+        <div class="small text-muted"><%= o.completed_units %> / <%= o.unit_count %> units completed</div>
+      </div>
+    </a>
+  <% }); %>
+  <% if (orders.length === 0) { %><p class="text-muted text-center py-4">No orders yet.</p><% } %>
 </div>

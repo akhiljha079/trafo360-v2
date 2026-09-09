@@ -1,6 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
+const { loadPermissions } = require('../middleware/auth');
 const router = express.Router();
 
 router.get('/login', (req, res) => {
@@ -27,13 +28,15 @@ router.post('/login', async (req, res) => {
       req.flash('error', 'Invalid email or password.');
       return res.redirect('/login');
     }
+    const permissions = await loadPermissions(user.role_id);
     req.session.user = {
       id: user.id, name: user.name, email: user.email, role_id: user.role_id,
       role_name: user.role_name, is_admin: !!user.is_admin, is_director: !!user.is_director,
       can_view_confidential: !!user.can_view_confidential,
       can_approve_document_issue: !!user.can_approve_document_issue,
       can_manage_documents: !!user.can_manage_documents,
-      can_manage_jobs: !!user.can_manage_jobs
+      can_manage_jobs: !!user.can_manage_jobs,
+      permissions
     };
     req.flash('success', `Welcome back, ${user.name}.`);
     // Honor a safe "next" destination (e.g. from a QR-code scan link) - only allow relative paths

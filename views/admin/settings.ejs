@@ -1,6 +1,6 @@
 <h4 class="mb-3">System Settings</h4>
 
-<div class="card" style="max-width:600px;">
+<div class="card" style="max-width:600px;" data-animate>
   <div class="card-body">
     <form action="/admin/settings" method="POST" enctype="multipart/form-data">
       <div class="mb-3">
@@ -35,6 +35,16 @@
       <div class="mb-3">
         <label class="form-label">Reminder: Days Before Due Date</label>
         <input type="number" name="reminder_days_before_due" class="form-control" value="<%= settings.reminder_days_before_due || 1 %>">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Default Warranty Period (months)</label>
+        <input type="number" name="default_warranty_months" class="form-control" value="<%= settings.default_warranty_months || 18 %>">
+        <div class="form-text">Used when a transformer type has no warranty period of its own set in Admin &rarr; GTP Schema.</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Warranty Expiring Alert (days before expiry)</label>
+        <input type="number" name="warranty_expiring_days_before" class="form-control" value="<%= settings.warranty_expiring_days_before || 60 %>">
+        <div class="form-text">A warranty moves from Active to Expiring this many days before its end date, and the Warranty module's users are notified.</div>
       </div>
       <div class="mb-3">
         <label class="form-label">Warranty Certificate Terms</label>

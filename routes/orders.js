@@ -1,7 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
 const pool = require('../config/db');
-const { requireAuth, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireModule } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { notifyStageEvent } = require('../utils/notify');
 const { getSchema, getActiveTransformerTypes, fieldsForStage } = require('../utils/gtpSchema');
@@ -39,24 +39,25 @@ router.get('/orders', requireAuth, async (req, res) => {
 });
 
 // ---------------- NEW ORDER (with GTP form) ----------------
-router.get('/orders/new', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.get('/orders/new', requireAuth, requireModule('sales', 'create'), async (req, res) => {
   const transformerTypes = await getActiveTransformerTypes();
   const selectedType = req.query.transformer_type || (transformerTypes[0] && transformerTypes[0].name) || '';
   const gtpGroups = await getSchema(selectedType);
-  res.render('orders/form', { title: 'New Order', order: null, transformerTypes, selectedType, gtpGroups, gtpData: {} });
+  const [customers] = await pool.query('SELECT id, name FROM customers WHERE is_active=1 ORDER BY name');
+  res.render('orders/form', { title: 'New Order', order: null, transformerTypes, selectedType, gtpGroups, gtpData: {}, customers });
 });
 
-router.post('/orders', requireAuth, requirePermission('can_manage_jobs'),
+router.post('/orders', requireAuth, requireModule('sales', 'create'),
   [body('order_no').trim().notEmpty().withMessage('Order No. is required.').isLength({ max: 60 }), ...orderFieldRules],
   validate, async (req, res) => {
-  const { order_no, customer_name, po_no, transformer_type, rating, total_quantity } = req.body;
+  const { order_no, customer_name, customer_id, po_no, transformer_type, rating, total_quantity } = req.body;
   try {
     const schema = await getSchema(transformer_type);
     const gtp = parseGtp(req.body, schema);
     const [result] = await pool.query(
-      `INSERT INTO orders (order_no, customer_name, po_no, transformer_type, rating, total_quantity, gtp_json, created_by)
-       VALUES (?,?,?,?,?,?,?,?)`,
-      [order_no, customer_name, po_no || null, transformer_type, rating || null, total_quantity || 1, JSON.stringify(gtp), req.session.user.id]
+      `INSERT INTO orders (order_no, customer_name, customer_id, po_no, transformer_type, rating, total_quantity, gtp_json, created_by)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      [order_no, customer_name, customer_id || null, po_no || null, transformer_type, rating || null, total_quantity || 1, JSON.stringify(gtp), req.session.user.id]
     );
     req.flash('success', `Order ${order_no} created. Now add lots to start manufacturing units.`);
     res.redirect(`/orders/${result.insertId}`);
@@ -68,7 +69,7 @@ router.post('/orders', requireAuth, requirePermission('can_manage_jobs'),
 });
 
 // ---------------- EDIT ORDER (with GTP form) ----------------
-router.get('/orders/:id/edit', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.get('/orders/:id/edit', requireAuth, requireModule('sales', 'edit'), async (req, res) => {
   const [[order]] = await pool.query('SELECT * FROM orders WHERE id=? AND is_deleted=0', [req.params.id]);
   if (!order) { req.flash('error', 'Order not found.'); return res.redirect('/orders'); }
   let gtpData = {};
@@ -76,18 +77,23 @@ router.get('/orders/:id/edit', requireAuth, requirePermission('can_manage_jobs')
   const transformerTypes = await getActiveTransformerTypes();
   const selectedType = req.query.transformer_type || order.transformer_type;
   const gtpGroups = await getSchema(selectedType);
-  res.render('orders/form', { title: `Edit ${order.order_no}`, order, transformerTypes, selectedType, gtpGroups, gtpData });
+  const [customers] = await pool.query('SELECT id, name FROM customers WHERE is_active=1 ORDER BY name');
+  res.render('orders/form', { title: `Edit ${order.order_no}`, order, transformerTypes, selectedType, gtpGroups, gtpData, customers });
 });
 
-router.post('/orders/:id/edit', requireAuth, requirePermission('can_manage_jobs'), orderFieldRules, validate, async (req, res) => {
-  const { customer_name, po_no, transformer_type, rating, total_quantity } = req.body;
+router.post('/orders/:id/edit', requireAuth, requireModule('sales', 'edit'), orderFieldRules, validate, async (req, res) => {
+  const { customer_name, customer_id, po_no, transformer_type, rating, total_quantity } = req.body;
   try {
     const schema = await getSchema(transformer_type);
     const gtp = parseGtp(req.body, schema);
     await pool.query(
-      `UPDATE orders SET customer_name=?, po_no=?, transformer_type=?, rating=?, total_quantity=?, gtp_json=? WHERE id=?`,
-      [customer_name, po_no || null, transformer_type, rating || null, total_quantity || 1, JSON.stringify(gtp), req.params.id]
+      `UPDATE orders SET customer_name=?, customer_id=?, po_no=?, transformer_type=?, rating=?, total_quantity=?, gtp_json=? WHERE id=?`,
+      [customer_name, customer_id || null, po_no || null, transformer_type, rating || null, total_quantity || 1, JSON.stringify(gtp), req.params.id]
     );
+    // Keep existing units' customer_id in sync with the order's link, so
+    // linking/relinking a customer after units already exist still makes
+    // them show up (or stop showing up) in the Customer Portal.
+    await pool.query('UPDATE jobs SET customer_id=? WHERE order_id=?', [customer_id || null, req.params.id]);
     req.flash('success', 'Order and GTP parameters updated.');
     res.redirect(`/orders/${req.params.id}`);
   } catch (err) {
@@ -98,13 +104,13 @@ router.post('/orders/:id/edit', requireAuth, requirePermission('can_manage_jobs'
 });
 
 // ---------------- DELETE (soft) ORDER ----------------
-router.post('/orders/:id/delete', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/orders/:id/delete', requireAuth, requireModule('sales', 'delete'), async (req, res) => {
   await pool.query('UPDATE orders SET is_deleted=1 WHERE id=?', [req.params.id]);
   req.flash('success', 'Order deleted (archived - underlying units and history are preserved for audit purposes).');
   res.redirect('/orders');
 });
 
-router.post('/orders/:id/status', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/orders/:id/status', requireAuth, requireModule('sales', 'edit'), async (req, res) => {
   const { status } = req.body;
   await pool.query('UPDATE orders SET status=? WHERE id=?', [status, req.params.id]);
   req.flash('success', `Order status set to ${status}.`);
@@ -144,7 +150,7 @@ router.get('/orders/:id', requireAuth, async (req, res) => {
 });
 
 // GENERATE an order-level technical document (QAP, Technical Offer, BOM, MTC Index)
-router.post('/orders/:id/generate-document', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/orders/:id/generate-document', requireAuth, requireModule('sales', 'edit'), async (req, res) => {
   const { doc_type } = req.body;
   const orderId = req.params.id;
   try {
@@ -161,7 +167,7 @@ router.post('/orders/:id/generate-document', requireAuth, requirePermission('can
 });
 
 // ---------------- ADD LOT (auto-creates the unit/job records) ----------------
-router.post('/orders/:id/lots', requireAuth, requirePermission('can_manage_jobs'), lotFieldRules, validate, async (req, res) => {
+router.post('/orders/:id/lots', requireAuth, requireModule('manufacturing', 'create'), lotFieldRules, validate, async (req, res) => {
   const orderId = req.params.id;
   const { lot_no, lot_name, quantity, planned_start_date, planned_completion_date } = req.body;
   const qty = Math.max(1, Number(quantity) || 1);
@@ -191,9 +197,9 @@ router.post('/orders/:id/lots', requireAuth, requirePermission('can_manage_jobs'
       const unitNo = i;
       const jobNo = `${order.order_no}-L${lot_no}-U${String(unitNo).padStart(2, '0')}`;
       const [jobResult] = await conn.query(
-        `INSERT INTO jobs (order_id, lot_id, unit_no, job_no, po_no, customer_name, transformer_type, rating, current_stage_id, created_by)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        [orderId, lotId, unitNo, jobNo, order.po_no, order.customer_name, order.transformer_type, order.rating,
+        `INSERT INTO jobs (order_id, lot_id, unit_no, job_no, po_no, customer_name, customer_id, transformer_type, rating, current_stage_id, created_by)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [orderId, lotId, unitNo, jobNo, order.po_no, order.customer_name, order.customer_id, order.transformer_type, order.rating,
          startStage ? startStage.id : null, req.session.user.id]
       );
       if (startStage) {
@@ -217,7 +223,7 @@ router.post('/orders/:id/lots', requireAuth, requirePermission('can_manage_jobs'
   }
 });
 
-router.post('/orders/:id/lots/:lotId/status', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/orders/:id/lots/:lotId/status', requireAuth, requireModule('manufacturing', 'edit'), async (req, res) => {
   const { status } = req.body;
   await pool.query('UPDATE lots SET status=? WHERE id=?', [status, req.params.lotId]);
   req.flash('success', `Lot status set to ${status}.`);
@@ -267,7 +273,7 @@ router.get('/orders/:id/lots/:lotId', requireAuth, async (req, res) => {
 });
 
 // GENERATE a lot-level technical document (Packing List)
-router.post('/orders/:id/lots/:lotId/generate-document', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/orders/:id/lots/:lotId/generate-document', requireAuth, requireModule('manufacturing', 'edit'), async (req, res) => {
   const { doc_type } = req.body;
   const { id: orderId, lotId } = req.params;
   try {

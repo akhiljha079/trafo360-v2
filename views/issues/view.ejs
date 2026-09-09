@@ -1,3 +1,4 @@
+<% function docPerm(action) { return currentUser.is_admin || (currentUser.permissions.documents && currentUser.permissions.documents[action]); } %>
 <div class="d-flex justify-content-between align-items-start mb-3">
   <div>
     <h4 class="mb-0">Issue #<%= issue.id %> &mdash; <%= issue.doc_code %></h4>
@@ -25,7 +26,7 @@
       </div>
     </div>
 
-    <% if (issue.status === 'Pending Approval' && currentUser.can_approve_document_issue) { %>
+    <% if (issue.status === 'Pending Approval' && docPerm('approve')) { %>
     <div class="card mb-3">
       <div class="card-header">Approve / Reject This Request</div>
       <div class="card-body">
@@ -50,7 +51,7 @@
     </div>
     <% } %>
 
-    <% if (['Issued','Overdue','Escalated'].includes(issue.status) && currentUser.can_manage_documents) { %>
+    <% if (['Issued','Overdue','Escalated'].includes(issue.status) && docPerm('edit')) { %>
     <div class="card mb-3">
       <div class="card-header">Mark as Returned</div>
       <div class="card-body">
@@ -95,7 +96,7 @@
               <span class="badge status-badge-<%= e.status %>"><%= e.status %></span>
             </div>
             <div class="small text-muted">Reason: <%= e.reason || '-' %></div>
-            <% if (e.status === 'Pending' && currentUser.can_approve_document_issue) { %>
+            <% if (e.status === 'Pending' && docPerm('approve')) { %>
               <form action="/issues/<%= issue.id %>/extend/<%= e.id %>/decision" method="POST" class="mt-2">
                 <canvas id="extSig-<%= e.id %>" class="sig-pad border rounded mb-1" width="350" height="90" style="width:100%;max-width:350px;touch-action:none;background:#fff;"></canvas>
                 <div><button type="button" class="btn btn-sm btn-link p-0" onclick="clearSig('extSig-<%= e.id %>')">Clear signature</button></div>

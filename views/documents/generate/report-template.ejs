@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title><%= reportLabel %> Report</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1a1a1a; margin: 0; }
+  .letterhead { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0F3B5F; padding-bottom: 10px; margin-bottom: 14px; }
+  .letterhead .company { font-size: 16px; font-weight: bold; color: #0F3B5F; }
+  .letterhead .docmeta { text-align: right; font-size: 9px; color: #444; }
+  .letterhead .docmeta b { color: #0F3B5F; }
+  h1.doctitle { font-size: 15px; color: #0F3B5F; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 4px 0; }
+  p.range { color: #444; margin: 0 0 14px 0; }
+  table.datatable { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  table.datatable th, table.datatable td { border: 1px solid #D8DEE9; padding: 5px 8px; text-align: left; font-size: 10.5px; }
+  table.datatable th { background: #0F3B5F; color: #fff; font-weight: 600; }
+  table.datatable tr:nth-child(even) td { background: #F7F9FC; }
+</style>
+</head>
+<body>
+
+<div class="letterhead">
+  <div class="company"><%= companyName %></div>
+  <div class="docmeta">
+    <div><b>Generated:</b> <%= generatedDate %></div>
+  </div>
+</div>
+
+<h1 class="doctitle"><%= reportLabel %> Report</h1>
+<p class="range">Date range: <b><%= from %></b> to <b><%= to %></b> &middot; <%= rows.length %> record(s)</p>
+
+<table class="datatable">
+  <thead>
+    <tr><% columns.forEach(function(c) { %><th><%= c.label %></th><% }); %></tr>
+  </thead>
+  <tbody>
+    <% rows.forEach(function(r) { %>
+      <tr><% columns.forEach(function(c) { %><td><%= r[c.key] !== null && r[c.key] !== undefined ? r[c.key] : '-' %></td><% }); %></tr>
+    <% }); %>
+    <% if (rows.length === 0) { %><tr><td colspan="<%= columns.length %>" style="text-align:center;color:#888;">No records in this date range.</td></tr><% } %>
+  </tbody>
+</table>
+
+</body>
+</html>

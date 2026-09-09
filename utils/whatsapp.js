@@ -42,6 +42,14 @@ async function initWhatsApp() {
   if (status === 'initializing' || status === 'ready' || status === 'qr_pending') {
     return getStatus(); // already running / starting
   }
+  // A previous session may have died (disconnected/auth_failure) without its
+  // browser process being cleaned up - destroy it first so this init doesn't
+  // fight the old one for the same session lock (the exact crash we saw:
+  // "browser is already running for .../session").
+  if (client) {
+    try { await client.destroy(); } catch (err) { console.warn('[whatsapp] cleanup of previous session failed (continuing):', err.message); }
+    client = null;
+  }
   status = 'initializing';
   lastError = null;
   try {
@@ -71,16 +79,22 @@ async function initWhatsApp() {
       console.log('[whatsapp] WhatsApp Web session connected and ready.');
     });
 
-    client.on('auth_failure', (msg) => {
+    client.on('auth_failure', async (msg) => {
       status = 'error';
       lastError = 'Authentication failed: ' + msg;
       console.error('[whatsapp] auth_failure:', msg);
+      // Fully tear down the browser now, not just mark status - otherwise
+      // it's left running and the next Retry click fights it for the lock.
+      try { if (client) await client.destroy(); } catch (e) { /* already dead */ }
+      client = null;
     });
 
-    client.on('disconnected', (reason) => {
+    client.on('disconnected', async (reason) => {
       status = 'error';
       lastError = 'Disconnected: ' + reason;
       console.warn('[whatsapp] disconnected:', reason);
+      try { if (client) await client.destroy(); } catch (e) { /* already dead */ }
+      client = null;
     });
 
     await client.initialize();
@@ -88,6 +102,8 @@ async function initWhatsApp() {
     status = 'error';
     lastError = err.message;
     console.error('[whatsapp] Failed to initialize (this is optional - email notifications still work):', err.message);
+    try { if (client) await client.destroy(); } catch (e) { /* already dead */ }
+    client = null;
   }
   return getStatus();
 }

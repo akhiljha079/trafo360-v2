@@ -5,9 +5,10 @@ const crypto = require('crypto');
 const QRCode = require('qrcode');
 const { body } = require('express-validator');
 const pool = require('../config/db');
-const { requireAuth, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireModule, requireDocumentModule, requirePermission } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { canSeeDocument } = require('../utils/documentAccess');
+const { processDocumentOcrAsync, guessDocNumber, guessDate } = require('../utils/ocr');
 const router = express.Router();
 
 const CONFIDENTIALITY_LEVELS = ['Public', 'Internal', 'Confidential', 'Highly Confidential'];
@@ -20,11 +21,14 @@ const docFieldRules = [
 router.get('/documents', requireAuth, async (req, res) => {
   const { q, category_id, confidentiality, view } = req.query;
   const showArchived = view === 'archived';
+  // Accounting-category documents live under the Accounting module's own
+  // list (/accounting) instead of cluttering the general library here.
   let sql = `SELECT d.*, c.name AS category_name, j.job_no, j.customer_name
              FROM documents d LEFT JOIN document_categories c ON d.category_id=c.id
-             LEFT JOIN jobs j ON d.related_job_id=j.id WHERE d.is_active=?`;
+             LEFT JOIN jobs j ON d.related_job_id=j.id
+             WHERE d.is_active=? AND (c.category_type IS NULL OR c.category_type != 'accounting')`;
   const params = [showArchived ? 0 : 1];
-  if (q) { sql += ' AND (d.doc_code LIKE ? OR d.doc_name LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
+  if (q) { sql += ' AND (d.doc_code LIKE ? OR d.doc_name LIKE ? OR d.ocr_text LIKE ?)'; params.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   if (category_id) { sql += ' AND d.category_id=?'; params.push(category_id); }
   if (confidentiality) { sql += ' AND d.confidentiality=?'; params.push(confidentiality); }
   sql += ' ORDER BY d.upload_date DESC';
@@ -35,8 +39,10 @@ router.get('/documents', requireAuth, async (req, res) => {
 });
 
 // NEW (form)
-router.get('/documents/new', requireAuth, requirePermission('can_manage_documents'), async (req, res) => {
-  const [categories] = await pool.query('SELECT * FROM document_categories ORDER BY name');
+router.get('/documents/new', requireAuth, requireModule('documents', 'create'), async (req, res) => {
+  // Accounting-category documents are uploaded from the Accounting module
+  // (its own permission gate) instead of the general Document Library.
+  const [categories] = await pool.query(`SELECT * FROM document_categories WHERE category_type != 'accounting' ORDER BY name`);
   const [jobs] = await pool.query('SELECT id, job_no, customer_name FROM jobs WHERE is_deleted=0 ORDER BY created_at DESC LIMIT 200');
   res.render('documents/new', { title: 'Add Document', categories, jobs });
 });
@@ -44,18 +50,19 @@ router.get('/documents/new', requireAuth, requirePermission('can_manage_document
 // CREATE
 // NOTE: file upload (upload.single('file')) for this route runs early in
 // server.js, before CSRF validation - see the comment in config/csrf.js.
-router.post('/documents', requireAuth, requirePermission('can_manage_documents'),
+router.post('/documents', requireAuth, requireModule('documents', 'create'),
   [body('doc_code').trim().notEmpty().withMessage('Document Code is required.').isLength({ max: 60 }), ...docFieldRules],
   validate, async (req, res) => {
-  const { doc_code, doc_name, category_id, confidentiality, related_job_id, storage_location } = req.body;
+  const { doc_code, doc_name, category_id, confidentiality, related_job_id, storage_location, customer_visible } = req.body;
   try {
     const filePath = req.file ? `/uploads/${req.file.filename}` : null;
     const qrToken = crypto.randomBytes(16).toString('hex'); // used in the printable QR label for physical-file tracking
     const [result] = await pool.query(
-      `INSERT INTO documents (doc_code, doc_name, category_id, confidentiality, related_job_id, storage_location, file_path, qr_token, uploaded_by)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
-      [doc_code, doc_name, category_id || null, confidentiality, related_job_id || null, storage_location || null, filePath, qrToken, req.session.user.id]
+      `INSERT INTO documents (doc_code, doc_name, category_id, confidentiality, related_job_id, storage_location, customer_visible, file_path, qr_token, uploaded_by)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [doc_code, doc_name, category_id || null, confidentiality, related_job_id || null, storage_location || null, customer_visible ? 1 : 0, filePath, qrToken, req.session.user.id]
     );
+    if (req.file) processDocumentOcrAsync(pool, result.insertId, req.file.path);
     req.flash('success', `Document ${doc_code} added to the library.`);
     res.redirect(`/documents/${result.insertId}`);
   } catch (err) {
@@ -66,28 +73,35 @@ router.post('/documents', requireAuth, requirePermission('can_manage_documents')
 });
 
 // EDIT (form)
-router.get('/documents/:id/edit', requireAuth, requirePermission('can_manage_documents'), async (req, res) => {
+router.get('/documents/:id/edit', requireAuth, requireDocumentModule('edit'), async (req, res) => {
   const [[doc]] = await pool.query('SELECT * FROM documents WHERE id=?', [req.params.id]);
   if (!doc) { req.flash('error', 'Document not found.'); return res.redirect('/documents'); }
-  const [categories] = await pool.query('SELECT * FROM document_categories ORDER BY name');
+  // Same operational-only list as "Add Document" (accounting categories are
+  // reassigned from the Accounting module instead) - except keep the
+  // document's own current category selectable even if it's an accounting
+  // one, so editing an existing accounting document's other fields doesn't
+  // silently reassign its category out from under it.
+  const [categories] = await pool.query(
+    `SELECT * FROM document_categories WHERE category_type != 'accounting' OR id = ? ORDER BY name`, [doc.category_id]);
   const [jobs] = await pool.query('SELECT id, job_no, customer_name FROM jobs WHERE is_deleted=0 ORDER BY created_at DESC LIMIT 200');
   res.render('documents/edit', { title: `Edit ${doc.doc_code}`, doc, categories, jobs });
 });
 
 // UPDATE metadata (and optionally replace the uploaded file)
 // NOTE: file upload for this route also runs early in server.js - see above.
-router.post('/documents/:id/edit', requireAuth, requirePermission('can_manage_documents'), docFieldRules, validate, async (req, res) => {
-  const { doc_name, category_id, confidentiality, related_job_id, storage_location } = req.body;
+router.post('/documents/:id/edit', requireAuth, requireDocumentModule('edit'), docFieldRules, validate, async (req, res) => {
+  const { doc_name, category_id, confidentiality, related_job_id, storage_location, customer_visible } = req.body;
   try {
     if (req.file) {
       await pool.query(
-        `UPDATE documents SET doc_name=?, category_id=?, confidentiality=?, related_job_id=?, storage_location=?, file_path=? WHERE id=?`,
-        [doc_name, category_id || null, confidentiality, related_job_id || null, storage_location || null, `/uploads/${req.file.filename}`, req.params.id]
+        `UPDATE documents SET doc_name=?, category_id=?, confidentiality=?, related_job_id=?, storage_location=?, customer_visible=?, file_path=?, ocr_text=NULL WHERE id=?`,
+        [doc_name, category_id || null, confidentiality, related_job_id || null, storage_location || null, customer_visible ? 1 : 0, `/uploads/${req.file.filename}`, req.params.id]
       );
+      processDocumentOcrAsync(pool, req.params.id, req.file.path);
     } else {
       await pool.query(
-        `UPDATE documents SET doc_name=?, category_id=?, confidentiality=?, related_job_id=?, storage_location=? WHERE id=?`,
-        [doc_name, category_id || null, confidentiality, related_job_id || null, storage_location || null, req.params.id]
+        `UPDATE documents SET doc_name=?, category_id=?, confidentiality=?, related_job_id=?, storage_location=?, customer_visible=? WHERE id=?`,
+        [doc_name, category_id || null, confidentiality, related_job_id || null, storage_location || null, customer_visible ? 1 : 0, req.params.id]
       );
     }
     req.flash('success', 'Document updated.');
@@ -100,14 +114,14 @@ router.post('/documents/:id/edit', requireAuth, requirePermission('can_manage_do
 });
 
 // ARCHIVE (soft delete - default "Delete" action; reversible, keeps QA/audit trail intact)
-router.post('/documents/:id/archive', requireAuth, requirePermission('can_manage_documents'), async (req, res) => {
+router.post('/documents/:id/archive', requireAuth, requireDocumentModule('delete'), async (req, res) => {
   await pool.query(`UPDATE documents SET is_active=0, current_status='Archived' WHERE id=?`, [req.params.id]);
   req.flash('success', 'Document archived. It can be restored any time from the Archived view.');
   res.redirect('/documents');
 });
 
 // RESTORE from archive
-router.post('/documents/:id/restore', requireAuth, requirePermission('can_manage_documents'), async (req, res) => {
+router.post('/documents/:id/restore', requireAuth, requireDocumentModule('edit'), async (req, res) => {
   await pool.query(`UPDATE documents SET is_active=1, current_status='Available' WHERE id=?`, [req.params.id]);
   req.flash('success', 'Document restored.');
   res.redirect('/documents?view=archived');
@@ -128,7 +142,7 @@ router.post('/documents/:id/delete', requireAuth, requirePermission('is_admin'),
 // VIEW
 router.get('/documents/:id', requireAuth, async (req, res) => {
   const [[doc]] = await pool.query(
-    `SELECT d.*, c.name AS category_name, j.job_no, j.customer_name, u.name AS uploaded_by_name,
+    `SELECT d.*, c.name AS category_name, c.category_type, j.job_no, j.customer_name, u.name AS uploaded_by_name,
             ro.order_no AS related_order_no, rl.lot_name AS related_lot_name, rl.lot_no AS related_lot_no
      FROM documents d LEFT JOIN document_categories c ON d.category_id=c.id
      LEFT JOIN jobs j ON d.related_job_id=j.id LEFT JOIN users u ON d.uploaded_by=u.id
@@ -142,12 +156,15 @@ router.get('/documents/:id', requireAuth, async (req, res) => {
   const [issueHistory] = await pool.query(
     `SELECT di.*, u.name AS requester_name FROM document_issues di JOIN users u ON di.requested_by=u.id
      WHERE di.document_id=? ORDER BY di.created_at DESC`, [req.params.id]);
-  res.render('documents/view', { title: doc.doc_code, doc, issueHistory });
+  const ocrDocNumberGuess = guessDocNumber(doc.ocr_text);
+  const ocrDateGuess = guessDate(doc.ocr_text);
+  res.render('documents/view', { title: doc.doc_code, doc, issueHistory, ocrDocNumberGuess, ocrDateGuess });
 });
 
 // DOWNLOAD (authenticated & confidentiality-checked - never served as a static file)
 router.get('/documents/:id/download', requireAuth, async (req, res) => {
-  const [[doc]] = await pool.query('SELECT * FROM documents WHERE id=?', [req.params.id]);
+  const [[doc]] = await pool.query(
+    `SELECT d.*, c.category_type FROM documents d LEFT JOIN document_categories c ON d.category_id=c.id WHERE d.id=?`, [req.params.id]);
   if (!doc || !doc.file_path) { req.flash('error', 'File not found.'); return res.redirect('/documents'); }
   if (!canSeeDocument(req.session.user, doc)) {
     req.flash('error', 'This document is confidential; you do not have access.');
@@ -177,7 +194,8 @@ router.get('/documents/:id/qrcode.png', requireAuth, async (req, res) => {
 
 // Printable QR label - designed to print onto a sticky label and attach to the physical file/folder
 router.get('/documents/:id/label', requireAuth, async (req, res) => {
-  const [[doc]] = await pool.query('SELECT * FROM documents WHERE id=?', [req.params.id]);
+  const [[doc]] = await pool.query(
+    `SELECT d.*, c.category_type FROM documents d LEFT JOIN document_categories c ON d.category_id=c.id WHERE d.id=?`, [req.params.id]);
   if (!doc) { req.flash('error', 'Document not found.'); return res.redirect('/documents'); }
   if (!canSeeDocument(req.session.user, doc)) {
     req.flash('error', 'This document is confidential; you do not have access.');
@@ -187,7 +205,7 @@ router.get('/documents/:id/label', requireAuth, async (req, res) => {
 });
 
 // Regenerate QR token (e.g. if a label was compromised/lost) - Documents Coordinator only
-router.post('/documents/:id/qrcode/regenerate', requireAuth, requirePermission('can_manage_documents'), async (req, res) => {
+router.post('/documents/:id/qrcode/regenerate', requireAuth, requireDocumentModule('edit'), async (req, res) => {
   const newToken = crypto.randomBytes(16).toString('hex');
   await pool.query('UPDATE documents SET qr_token=? WHERE id=?', [newToken, req.params.id]);
   req.flash('success', 'QR code regenerated. Reprint and replace the physical label.');

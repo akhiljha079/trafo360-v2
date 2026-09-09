@@ -3,13 +3,14 @@ const path = require('path');
 const fs = require('fs');
 const { body } = require('express-validator');
 const pool = require('../config/db');
-const { requireAuth, requirePermission } = require('../middleware/auth');
+const { requireAuth, requireModule, requireJobPhaseModule } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { notifyStageEvent } = require('../utils/notify');
 const { getActiveTransformerTypes } = require('../utils/gtpSchema');
 const { DOCUMENT_TYPES } = require('../utils/documentTypes');
 const { generateDocument } = require('../utils/documentGenerator');
 const { computeRag, computeProgressPct } = require('../utils/jobStatus');
+const { createWarrantyForJob } = require('../utils/warranty');
 const router = express.Router();
 
 const jobFieldRules = [
@@ -30,19 +31,21 @@ router.get('/jobs', requireAuth, async (req, res) => {
   if (status) { sql += ' AND j.status=?'; params.push(status); }
   if (q) { sql += ' AND (j.job_no LIKE ? OR j.customer_name LIKE ? OR j.po_no LIKE ? OR j.serial_no LIKE ?)'; params.push(`%${q}%`,`%${q}%`,`%${q}%`,`%${q}%`); }
   sql += ' ORDER BY j.updated_at DESC';
-  const [jobs] = await pool.query(sql, params);
+  const [jobsRaw] = await pool.query(sql, params);
+  const [[{ totalStages }]] = await pool.query(`SELECT COUNT(*) AS totalStages FROM stages WHERE is_active=1`);
+  const jobs = jobsRaw.map(j => ({ ...j, progressPct: computeProgressPct(j.sequence_order, totalStages), rag: computeRag(j).rag }));
   res.render('jobs/list', { title: 'Transformer Jobs', jobs, filters: { phase, status, q } });
 });
 
 // NEW (form) - for a standalone job not created via the Orders/Lots module
-router.get('/jobs/new', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.get('/jobs/new', requireAuth, requireModule('manufacturing', 'create'), async (req, res) => {
   const [firstStage] = await pool.query('SELECT * FROM stages WHERE is_active=1 ORDER BY sequence_order ASC LIMIT 1');
   const transformerTypes = await getActiveTransformerTypes();
   res.render('jobs/new', { title: 'New Transformer Job', firstStage: firstStage[0], transformerTypes });
 });
 
 // CREATE
-router.post('/jobs', requireAuth, requirePermission('can_manage_jobs'),
+router.post('/jobs', requireAuth, requireModule('manufacturing', 'create'),
   [body('job_no').trim().notEmpty().withMessage('Job No. is required.').isLength({ max: 60 }), ...jobFieldRules],
   validate, async (req, res) => {
   const { job_no, po_no, customer_name, transformer_type, rating, serial_no, target_dispatch_date } = req.body;
@@ -70,7 +73,7 @@ router.post('/jobs', requireAuth, requirePermission('can_manage_jobs'),
 });
 
 // EDIT (form)
-router.get('/jobs/:id/edit', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.get('/jobs/:id/edit', requireAuth, requireModule('manufacturing', 'edit'), async (req, res) => {
   const [[job]] = await pool.query('SELECT * FROM jobs WHERE id=? AND is_deleted=0', [req.params.id]);
   if (!job) { req.flash('error', 'Job not found.'); return res.redirect('/jobs'); }
   const transformerTypes = await getActiveTransformerTypes();
@@ -78,7 +81,7 @@ router.get('/jobs/:id/edit', requireAuth, requirePermission('can_manage_jobs'), 
 });
 
 // UPDATE
-router.post('/jobs/:id/edit', requireAuth, requirePermission('can_manage_jobs'), jobFieldRules, validate, async (req, res) => {
+router.post('/jobs/:id/edit', requireAuth, requireModule('manufacturing', 'edit'), jobFieldRules, validate, async (req, res) => {
   const { po_no, customer_name, transformer_type, rating, serial_no } = req.body;
   try {
     await pool.query(
@@ -95,7 +98,7 @@ router.post('/jobs/:id/edit', requireAuth, requirePermission('can_manage_jobs'),
 });
 
 // DELETE (soft - preserves history for audit; hides from lists)
-router.post('/jobs/:id/delete', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/jobs/:id/delete', requireAuth, requireModule('manufacturing', 'delete'), async (req, res) => {
   await pool.query('UPDATE jobs SET is_deleted=1 WHERE id=?', [req.params.id]);
   req.flash('success', 'Job deleted (archived - stage history is preserved for audit purposes).');
   res.redirect('/jobs');
@@ -146,11 +149,13 @@ router.get('/jobs/:id', requireAuth, async (req, res) => {
     [Object.keys(DOCUMENT_TYPES).filter(k => DOCUMENT_TYPES[k].scope === 'job')]
   );
 
-  res.render('jobs/view', { title: job.job_no, job, allStages, history, documents, nextStage, requirements, missingMandatory, genDocTypes, progressPct, rag, ragLabel });
+  const [[warranty]] = await pool.query('SELECT id, status, end_date FROM warranties WHERE job_id=?', [req.params.id]);
+
+  res.render('jobs/view', { title: job.job_no, job, allStages, history, documents, nextStage, requirements, missingMandatory, genDocTypes, progressPct, rag, ragLabel, warranty });
 });
 
 // GENERATE a technical document (Routine Test Report, Nameplate, etc.) for this unit
-router.post('/jobs/:id/generate-document', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/jobs/:id/generate-document', requireAuth, requireModule('manufacturing', 'edit'), async (req, res) => {
   const { doc_type } = req.body;
   const jobId = req.params.id;
   try {
@@ -209,7 +214,7 @@ router.get('/jobs/:id/stage-documents/:docId/download', requireAuth, async (req,
 // customizable `stages` table, so admins can reorder/add/remove stages freely.
 // Blocked if any MANDATORY document requirement for the current stage hasn't
 // been uploaded yet - this is the department gate.
-router.post('/jobs/:id/advance', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/jobs/:id/advance', requireAuth, requireJobPhaseModule('edit'), async (req, res) => {
   const { remarks } = req.body;
   const jobId = req.params.id;
   try {
@@ -253,7 +258,9 @@ router.post('/jobs/:id/advance', requireAuth, requirePermission('can_manage_jobs
       req.flash('success', `Job moved to: ${nextStage.stage_name}`);
     } else {
       await pool.query(`UPDATE jobs SET status='Completed' WHERE id=?`, [jobId]);
-      req.flash('success', 'Job marked as Completed - all stages finished.');
+      // All stages finished = dispatched - start this unit's warranty clock.
+      createWarrantyForJob(jobId).catch(err => req.log?.error({ err }, 'warranty creation failed'));
+      req.flash('success', 'Job marked as Completed - all stages finished. Its warranty period has started.');
     }
     res.redirect(`/jobs/${jobId}`);
   } catch (err) {
@@ -265,7 +272,7 @@ router.post('/jobs/:id/advance', requireAuth, requirePermission('can_manage_jobs
 
 // JUMP TO A SPECIFIC STAGE MANUALLY (e.g. skip / go back) - for flexibility.
 // Not gated by document requirements since it's an explicit manual override.
-router.post('/jobs/:id/set-stage', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/jobs/:id/set-stage', requireAuth, requireJobPhaseModule('edit'), async (req, res) => {
   const { stage_id, remarks } = req.body;
   const jobId = req.params.id;
   try {
@@ -284,7 +291,7 @@ router.post('/jobs/:id/set-stage', requireAuth, requirePermission('can_manage_jo
 });
 
 // HOLD / CANCEL / REACTIVATE
-router.post('/jobs/:id/status', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/jobs/:id/status', requireAuth, requireJobPhaseModule('edit'), async (req, res) => {
   const { status } = req.body;
   await pool.query('UPDATE jobs SET status=? WHERE id=?', [status, req.params.id]);
   req.flash('success', `Job status set to ${status}.`);
@@ -292,7 +299,7 @@ router.post('/jobs/:id/status', requireAuth, requirePermission('can_manage_jobs'
 });
 
 // UPDATE TARGET DISPATCH DATE (used by the Project Status RAG calculation)
-router.post('/jobs/:id/target-date', requireAuth, requirePermission('can_manage_jobs'), async (req, res) => {
+router.post('/jobs/:id/target-date', requireAuth, requireModule('manufacturing', 'edit'), async (req, res) => {
   const { target_dispatch_date } = req.body;
   await pool.query('UPDATE jobs SET target_dispatch_date=? WHERE id=?', [target_dispatch_date || null, req.params.id]);
   req.flash('success', 'Target dispatch date updated.');

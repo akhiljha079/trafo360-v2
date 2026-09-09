@@ -60,11 +60,11 @@ INSERT INTO stages (stage_code, stage_name, phase, sequence_order, owner_role_id
 -- ---------------------------------------------------------------------
 -- TRANSFORMER TYPES  (was a fixed ENUM; now admin-customizable)
 -- ---------------------------------------------------------------------
-INSERT INTO transformer_types (name, sequence_order) VALUES
-('Power Transformer', 1),
-('Distribution Transformer', 2),
-('IDT (Interconnecting/Auto)', 3),
-('Special Purpose', 4);
+INSERT INTO transformer_types (name, sequence_order, warranty_months) VALUES
+('Power Transformer', 1, 18),
+('Distribution Transformer', 2, 18),
+('IDT (Interconnecting/Auto)', 3, 18),
+('Special Purpose', 4, 18);
 
 -- ---------------------------------------------------------------------
 -- GTP FIELD GROUPS & FIELDS  (was the hardcoded GTP_GROUPS constant in
@@ -146,7 +146,18 @@ INSERT INTO document_categories (name) VALUES
 ('Financial / Commercial'),
 ('HR & Administrative'),
 ('General / Miscellaneous'),
-('System-Generated Documents');
+('System-Generated Documents'),
+('Warranty Claim Records');
+
+-- Accounting module (document-collection only - no ledger/tax logic in this
+-- system) - these categories are what makes a document show up under the
+-- Accounting module instead of the general Document Library.
+INSERT INTO document_categories (name, category_type) VALUES
+('Sales Invoice', 'accounting'),
+('Payment Receipt', 'accounting'),
+('E-Way Bill', 'accounting'),
+('Purchase Order (Vendor)', 'accounting'),
+('Tax Invoice / GST Document', 'accounting');
 
 -- ---------------------------------------------------------------------
 -- DOCUMENT TEMPLATES  (settings for the technical-document generation
@@ -177,4 +188,63 @@ INSERT INTO system_settings (setting_key, setting_value) VALUES
 ('grace_period_working_days', '2'),
 ('reminder_days_before_due', '1'),
 ('whatsapp_enabled', '0'),
+('default_warranty_months', '18'),
+('warranty_expiring_days_before', '60'),
 ('warranty_terms_text', 'This transformer is warranted against defects in material and workmanship for a period of 18 months from the date of dispatch or 12 months from the date of commissioning, whichever is earlier, subject to the transformer being installed, operated, and maintained in accordance with the manufacturer''s instructions. This warranty does not cover damage due to improper installation, unauthorized repair, or force majeure.');
+
+-- ---------------------------------------------------------------------
+-- MODULES  (Sales/Manufacturing/Dispatch/Documents/Warranty/Accounting/
+-- Reports - the units per-role permissions below are granted against)
+-- ---------------------------------------------------------------------
+INSERT INTO modules (module_key, name, icon, sequence_order) VALUES
+('sales', 'Sales', 'bi-graph-up-arrow', 10),
+('manufacturing', 'Manufacturing', 'bi-gear-wide-connected', 20),
+('dispatch', 'Dispatch', 'bi-truck', 30),
+('documents', 'Documents', 'bi-folder2-open', 40),
+('warranty', 'Warranty', 'bi-shield-check', 50),
+('accounting', 'Accounting', 'bi-receipt', 60),
+('reports', 'Reports', 'bi-graph-up', 70);
+
+-- ---------------------------------------------------------------------
+-- ROLE PERMISSIONS  (backfilled per-module from the legacy flat flags above,
+-- so a fresh install ends up with the same effective access as before the
+-- per-module RBAC model existed. Admin gets full access to every module;
+-- can_manage_jobs covers Sales/Manufacturing/Dispatch/Warranty;
+-- can_manage_documents/can_approve_document_issue cover Documents/Accounting;
+-- can_approve_document_issue also covers Approve on Documents/Warranty.
+-- Fully re-configurable afterwards from Admin > Roles & Privileges.
+-- ---------------------------------------------------------------------
+INSERT IGNORE INTO role_permissions (role_id, module_id, can_view, can_create, can_edit, can_delete, can_approve)
+SELECT
+  r.id, m.id,
+  CASE
+    WHEN r.is_admin = 1 THEN 1
+    WHEN m.module_key IN ('sales','manufacturing','dispatch','warranty') AND r.can_manage_jobs = 1 THEN 1
+    WHEN m.module_key IN ('documents','accounting') AND (r.can_manage_documents = 1 OR r.can_approve_document_issue = 1) THEN 1
+    WHEN m.module_key = 'reports' AND (r.is_director = 1 OR r.can_manage_jobs = 1 OR r.can_manage_documents = 1) THEN 1
+    ELSE 0
+  END AS can_view,
+  CASE
+    WHEN r.is_admin = 1 THEN 1
+    WHEN m.module_key IN ('sales','manufacturing','dispatch','warranty') AND r.can_manage_jobs = 1 THEN 1
+    WHEN m.module_key IN ('documents','accounting') AND r.can_manage_documents = 1 THEN 1
+    ELSE 0
+  END AS can_create,
+  CASE
+    WHEN r.is_admin = 1 THEN 1
+    WHEN m.module_key IN ('sales','manufacturing','dispatch','warranty') AND r.can_manage_jobs = 1 THEN 1
+    WHEN m.module_key IN ('documents','accounting') AND r.can_manage_documents = 1 THEN 1
+    ELSE 0
+  END AS can_edit,
+  CASE
+    WHEN r.is_admin = 1 THEN 1
+    WHEN m.module_key IN ('sales','manufacturing','dispatch','warranty') AND r.can_manage_jobs = 1 THEN 1
+    WHEN m.module_key IN ('documents','accounting') AND r.can_manage_documents = 1 THEN 1
+    ELSE 0
+  END AS can_delete,
+  CASE
+    WHEN r.is_admin = 1 THEN 1
+    WHEN m.module_key IN ('documents','warranty') AND r.can_approve_document_issue = 1 THEN 1
+    ELSE 0
+  END AS can_approve
+FROM roles r CROSS JOIN modules m;
