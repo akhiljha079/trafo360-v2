@@ -44,6 +44,7 @@ verified and how, and what still needs a real deployment to confirm — see
 | Email | Nodemailer (SMTP, configurable from the Admin UI) |
 | Scheduled jobs | node-cron (in-process daily scheduler) |
 | File uploads | Multer (files stored outside the public web root) |
+| OCR | Tesseract.js (self-hosted, no cloud API/key - see §6C) |
 
 No build step is required — it runs directly with `node server.js` / PM2. This matches how aaPanel's Node.js App manager expects an app to run.
 
@@ -204,7 +205,41 @@ npm run create-admin  # creates your first Admin login from the .env ADMIN_EMAIL
 | Dispatch | Dispatch-phase stages |
 | Documents Coordinator | Manages the document library and issue workflow; can view confidential |
 
-All of the above (who can approve issues, who receives escalations, who can view confidential material, who can manage documents/jobs) are just checkboxes in **Admin → Roles & Privileges** — fully editable, and you can add new roles at any time.
+**Admin → Roles & Privileges** now grids this out per module instead of a flat list of checkboxes:
+Sales / Manufacturing / Dispatch / Documents / Warranty / Accounting / Reports, each with independent
+View / Create / Edit / Delete / Approve toggles per role, alongside the three flags that were always
+cross-cutting rather than module-scoped (Admin, Director-gets-escalations, View Confidential). A role
+change takes effect the next time a user with that role logs in. If you're upgrading an existing
+install, run `db/upgrade_modules_rbac.sql` once (a fresh `npm run seed` already includes it) — it
+backfills every existing role's new per-module grid from its old flags, so nobody's effective access
+changes on upgrade; you can then re-tune it from the new grid at any time.
+
+---
+
+## 2A. Modules
+
+The sidebar and permission model are organized into modules that mirror the Sales → Manufacturing →
+Dispatch flow, plus Documents, Warranty, Accounting, and Reports. A physical transformer unit is still
+a single Job record that flows continuously through all three phases (that hasn't changed) — the
+modules are a navigation and permission grouping over that same underlying data, not separate copies
+of it:
+
+- **Sales** (`/sales`) — order/GTP intake overview, quick links into **Orders & GTP**.
+- **Manufacturing** (`/manufacturing`) — units currently in a Manufacturing-phase stage, active lots,
+  quick links into **Transformer Jobs** and **Project Status**.
+- **Dispatch** (`/dispatch`) — units currently in a Dispatch-phase stage, dispatch throughput this
+  month.
+- **Documents** — the existing Document Library and Document Issues.
+- **Reports** — currently the existing Analytics dashboard; a dedicated Reports module with
+  exportable per-module reports is planned for a later phase.
+- **Warranty** (`/warranty`) — see §6A.
+- **Accounting** (`/accounting`) — see §6B.
+
+A job's stage-transition actions (Advance / Set Stage / Hold / Cancel) are gated by whichever module
+its **current stage's phase** maps to, not by a fixed module — so a Dispatch-only role can push a unit
+through Dispatch-phase stages without needing Manufacturing rights, and vice versa. Everything else
+(creating/editing orders, jobs, lots, documents) is gated by a fixed module matching where that action
+lives in the sidebar.
 
 ---
 
@@ -254,6 +289,90 @@ feed each document type's data table (or disables a type entirely). If you're up
 install, run `db/upgrade_document_generation.sql` once (a fresh `npm run seed` already includes
 everything). Rendering uses a headless Chromium instance (via Puppeteer, downloaded automatically on
 `npm install`) - no extra server setup needed beyond what a normal deploy already does.
+
+## 6A. Warranty Tracking & Claims Management
+
+- A **Warranty** record is created automatically for a unit the moment its job is marked Completed
+  (all stages finished, i.e. dispatched) — `start_date` is the completion date, `duration_months`
+  comes from that unit's transformer type (**Admin → GTP Schema** → per-type "Warranty (months)"
+  field, falling back to the **Default Warranty Period** in **Admin → System Settings** if a type
+  isn't found), and `end_date` is computed from the two.
+- **Warranty → Warranty & Claims** lists every unit's warranty with a RAG-style status — **Active**,
+  **Expiring** (within the configurable **Warranty Expiring Alert** window, default 60 days —
+  **Admin → System Settings**), **Expired**, or **Void** — and how many open claims each has. A daily
+  background check (the same scheduler as the document overdue/escalation job, `cron/scheduler.js`)
+  flips Active → Expiring → Expired automatically and emails everyone with Warranty module access
+  when a unit enters the Expiring window.
+- **Full claims management**: from a warranty's page, raise a claim with the customer's complaint.
+  Each claim moves through **Open → Investigating → Resolved/Rejected → Closed**, can be assigned to
+  a user, records a site visit date, resolution notes, and any spare parts used, and supports
+  attaching photos/reports (reusing the existing Document Library upload/storage — these show up
+  tagged to the claim, not in the general library list). Moving a claim to a final decision
+  (Resolved/Rejected) requires the Warranty module's **Approve** permission; everything else needs
+  **Edit**/**Create**, matching the same per-module RBAC grid as every other module (**Admin → Roles
+  & Privileges**). The claimant is emailed automatically when a decision is recorded.
+- The existing **Warranty Certificate** PDF (generated from a Job's **Generate Document** panel,
+  §6.1) is unchanged and independent of this tracking — this module adds *tracking the warranty
+  period and handling claims against it*, not the certificate paperwork itself.
+
+## 6B. Accounting Documents Module
+
+Accounting itself (ledgers, GST/tax computation, payments) is explicitly **out of scope** for this
+system — but the factory still needs somewhere to file the documents that accounting produces or
+needs, linked back to the relevant order/job. **Accounting → Accounting Documents** is a thin,
+purpose-built view over the existing Document Library infrastructure (upload, storage, confidentiality)
+scoped to a dedicated set of categories (Sales Invoice, Payment Receipt, E-Way Bill, Purchase Order,
+Tax Invoice/GST) — no borrow/issue workflow, no ledger, no calculations, just collection and retrieval.
+Accounting documents are gated by their **own** entry in the per-module permission grid (**Admin →
+Roles & Privileges**), independent of the general Documents module, and do not appear in the general
+Document Library list (only under Accounting) — so a role can be given access to one without the other.
+
+## 6C. OCR on Uploaded Scans
+
+Uploading an image file (JPG/PNG — not a PDF; scanned PDFs aren't rasterized) to the Document Library
+or Accounting Documents kicks off a best-effort text extraction in the background via
+[Tesseract.js](https://github.com/naptha/tesseract.js), a self-hosted OCR engine (no cloud API, no key
+to manage — consistent with this app's offline-friendly deployment story). The extracted text is
+stored on the document and:
+- Shown on the document's page in a collapsible **OCR Extracted Text** panel, along with a
+  best-effort *guess* at a document number and a date found in the text (simple pattern matching -
+  always a suggestion to eyeball against the original, never applied automatically to the document's
+  actual name/code).
+- Searchable — the Document Library search box and global search also match against OCR'd text, so a
+  scanned certificate can be found by content even if it was catalogued under an unrelated name.
+
+Since OCR accuracy depends heavily on scan quality, fonts, and layout, treat this as a
+time-saving assist for cataloguing, not a data-entry replacement — it was designed and code-reviewed
+in this environment but the actual Tesseract recognition pass has not been run against a real scanned
+document here (no network access to install `tesseract.js` in this sandbox); please upload a real test
+scan after deploying and confirm the extracted text looks reasonable before relying on it. Run
+`npm install` after upgrading (adds the `tesseract.js` dependency) and `db/upgrade_ocr.sql` once
+against an existing database (a fresh `npm run seed` already includes the column).
+
+## 6D. Customer Portal
+
+A separate, restricted login surface at **`/portal/login`** — entirely distinct from staff logins
+(`/login`): different session, different login page, and a customer account never goes through the
+internal roles/permissions system at all.
+
+- **Admin → Customer Portal** is where Admin creates a **Customer** (the real-world company) and one
+  or more **portal logins** for it (name/email/password — customers cannot self-register). Password
+  resets and enable/disable both work the same way as Admin → Users.
+- An **Order** can optionally be linked to a Customer from its Edit / GTP page — this is what makes
+  the order (and the units created under it) visible in that customer's portal. Orders/units keep
+  their existing free-text `customer_name` for display everywhere else in the app; the link is
+  additive and nothing breaks for orders that aren't linked.
+- Once logged in, a customer sees **only their own orders**: per-unit stage progress (no GTP/technical
+  detail), and any document an admin has explicitly checked **"Visible in the Customer Portal"** on
+  that document's page in the Document Library or Accounting Documents (e.g. a released test report
+  or certificate) — nothing else in the system is reachable. Every portal query is scoped to the
+  logged-in customer's ID, and confidentiality is still enforced even on a customer-visible document
+  (Confidential/Highly Confidential is never shown externally, regardless of the flag).
+- If you're upgrading an existing install, run `db/upgrade_customer_portal.sql` once (a fresh
+  `npm run seed` already includes everything). Like the rest of this round of work, this was built and
+  reviewed without a live database — please click through a real customer login end-to-end before
+  relying on it (create a customer, link an order, mark a document Customer Visible, and confirm the
+  portal shows exactly what's expected and nothing more).
 
 ## 7. Department Document Gating
 
@@ -323,6 +442,26 @@ Inter/Poppins font pairing, a modern split-screen login page, sticky gradient na
 progress indicators throughout. If you're upgrading an existing install, run `db/upgrade_project_status.sql`
 once to add the new `target_dispatch_date` column (a fresh `npm run seed` already includes it).
 
+**Enterprise UI pass** (no schema changes - front-end only):
+
+- **Dashboard module tiles** — the Dashboard now leads with a row of live-stat tiles (Sales,
+  Manufacturing, Dispatch, Documents, Warranty, Accounting), each shown only if you can access that
+  module, linking straight to its home page.
+- **Tabs** on the two busiest detail pages — a **Transformer Job** page is now Overview / Documents
+  (with a "missing required docs" badge) / Stage History, and an **Order** page is Lots / GTP Summary
+  / Work Orders / Documents — using Bootstrap's native tab plugin (already loaded), styled with a
+  `.tabs-modern` treatment.
+- **Card/thumbnail grid view** — Transformer Jobs, Orders, Document Library, Accounting Documents,
+  Project Status, and Warranty each have a table/grid toggle; the grid cards for jobs and project
+  status reuse the existing transformer build visualization as their thumbnail. The toggle is
+  remembered per page/browser in `localStorage`, so it doesn't affect what anyone else sees.
+- **Motion** — cards and tiles gently fade/rise into place as you scroll to them
+  (`public/js/animate.js`, an IntersectionObserver), fully disabled under
+  `prefers-reduced-motion: reduce`, matching how the transformer build visualization already handled
+  reduced motion.
+- No new frontend framework or build step - everything above is the existing Bootstrap 5 + vanilla JS
+  stack, extended (`public/css/style.css`, `public/js/animate.js`, `public/js/viewToggle.js`).
+
 ## 11. Add-On Features Included in This Build
 
 Four of the previously "suggested" add-ons have now been built in. All are safe by default —
@@ -343,7 +482,8 @@ application is completely unaffected.
 - Signing is optional when *rejecting* a request (a signature isn't needed to say no).
 
 ### 11.3 Analytics Dashboard
-- New **Analytics** page (visible to Admin, Director, and anyone with "Manage Jobs" or "Manage Documents" privilege) with seven charts:
+- **Analytics** page (visible to anyone with **View** on the **Reports** module — **Admin → Roles &
+  Privileges**) with seven charts:
   1. Jobs by phase & status
   2. Average time spent per stage (hours) — spot bottlenecks
   3. Jobs created per month — throughput trend
@@ -351,7 +491,16 @@ application is completely unaffected.
   5. Overdue/escalated documents trend by month
   6. Stage-completion workload by department/role
   7. Documents by confidentiality level
-- Built with Chart.js (CDN, no extra build step) fed by live SQL aggregate queries — no manual report generation needed.
+- Built with Chart.js (CDN, no extra build step) fed by live SQL aggregate queries — for live trend
+  charts. For exportable tabular reports, see §11.3A below.
+
+### 11.3A Reports Module
+**Reports** (`/reports`, also gated on the Reports module's **View** permission) complements Analytics
+with filterable, exportable tabular reports, one per module: Sales, Manufacturing Throughput, Dispatch,
+Warranty Claims, Document Issues, and Accounting Documents. Each has a From/To date filter and two
+export buttons — **CSV** (for Excel) and **PDF** (letterheaded, via the same Puppeteer pipeline that
+renders the 11 technical document types, §6.1) — so a department head can pull, say, "every warranty
+claim raised last quarter" without writing a query.
 
 ### 11.4 WhatsApp Notifications (WhatsApp Web — no paid Business API)
 - **Admin → WhatsApp Notifications** lets you connect a real WhatsApp account by scanning a QR code (exactly like linking a device to WhatsApp Web on a browser).
@@ -379,9 +528,9 @@ application is completely unaffected.
 1. **Mobile app / PWA wrapper** — the current UI is responsive and works in a mobile browser, but an installable PWA (or a thin native wrapper) would let Director/approvers approve issue requests from a push notification with one tap.
 2. **Two-Factor Authentication (2FA)** — for Admin and Director logins specifically, given they can approve confidential document releases.
 3. **ERP/Tally integration** — auto-create the dispatch invoice / E-Way Bill stage entry from your accounting software instead of manual entry.
-4. **OCR on uploaded scans** — automatically extract document numbers/dates from scanned test certificates to reduce manual data entry when cataloguing documents.
-5. **Customer-facing portal** — a restricted login for customers to track their own transformer's stage progress and download their final released documents, without seeing internal data.
-6. **Automated backup to cloud storage** — nightly `mysqldump` + uploads folder sync to Google Drive/S3, since this system will become the single source of truth for your QA/MRB records.
+4. **Automated backup to cloud storage** — nightly `mysqldump` + uploads folder sync to Google Drive/S3, since this system will become the single source of truth for your QA/MRB records.
+
+**Built since the original version of this list:** OCR on uploaded scans (§6C) and a Customer-facing portal (§6D) — both described in their own sections below.
 
 ---
 
@@ -406,32 +555,43 @@ trafo-360/
 │   ├── seed.js                      # npm run seed
 │   └── createAdmin.js                # npm run create-admin
 ├── middleware/
-│   ├── auth.js                      # Session auth + role/permission guards
-│   ├── validate.js                   # express-validator result handler
-│   ├── upload.js                      # Multer config for confidential documents (private, outside public/)
-│   └── uploadLogo.js                   # Multer config for the public branding logo (inside public/)
+│   ├── auth.js                      # Session auth + role/permission guards (staff)
+│   ├── customerAuth.js               # Session auth guard for the Customer Portal (separate from staff)
+│   ├── validate.js                    # express-validator result handler
+│   ├── upload.js                       # Multer config for confidential documents (private, outside public/)
+│   └── uploadLogo.js                    # Multer config for the public branding logo (inside public/)
 ├── utils/
 │   ├── workingDays.js               # Grace-period working-day math
 │   ├── notify.js                     # Workflow stage email + WhatsApp engine
 │   ├── documentNotify.js              # Document issue email + WhatsApp engine
-│   ├── whatsapp.js                     # WhatsApp Web (unofficial) integration
-│   ├── gtpSchema.js                     # Resolves the DB-driven GTP schema (replaces the old hardcoded version)
-│   ├── documentTypes.js                  # Technical-document type definitions + data gathering
-│   ├── documentGenerator.js               # Orchestrates PDF generation -> Document Library filing
-│   ├── pdfGenerator.js                     # EJS -> HTML -> PDF via a shared Puppeteer instance
-│   ├── documentAccess.js                    # Shared document-confidentiality check
-│   ├── jobStatus.js                          # Shared RAG/progress-% computation
-│   ├── dashboardWidgets.js                    # Dashboard widget registry
-│   └── safeRedirect.js                         # Open-redirect-safe replacement for redirect('back')
+│   ├── warrantyNotify.js               # Warranty claim/expiry email + WhatsApp engine
+│   ├── permissionRecipients.js          # Shared "who has module permission X" lookup (both notifiers above)
+│   ├── warranty.js                       # Auto-creates a job's warranty record on dispatch
+│   ├── ocr.js                              # Tesseract.js text extraction + doc-number/date guessing
+│   ├── whatsapp.js                        # WhatsApp Web (unofficial) integration
+│   ├── gtpSchema.js                        # Resolves the DB-driven GTP schema (replaces the old hardcoded version)
+│   ├── documentTypes.js                     # Technical-document type definitions + data gathering
+│   ├── documentGenerator.js                  # Orchestrates PDF generation -> Document Library filing
+│   ├── pdfGenerator.js                        # EJS -> HTML -> PDF via a shared Puppeteer instance
+│   ├── documentAccess.js                       # Shared document-confidentiality check (module-aware)
+│   ├── jobStatus.js                             # Shared RAG/progress-% computation
+│   ├── dashboardWidgets.js                       # Dashboard widget registry
+│   └── safeRedirect.js                            # Open-redirect-safe replacement for redirect('back')
 ├── cron/
-│   └── scheduler.js                # Daily reminder/escalation job
-├── routes/                         # auth, search, dashboard, jobs, orders, projectStatus, documents,
-│                                    # issues, analytics, admin, gtpSchema, documentTemplates
-├── views/                          # EJS templates, including views/documents/generate/ (PDF layout)
-│                                    # and views/partials/widgets/ (dashboard widget partials)
+│   └── scheduler.js                # Daily document reminder/escalation + warranty expiry job
+├── routes/                         # auth, customerPortal, adminCustomers, search, dashboard, sales,
+│                                    # manufacturing, dispatch, jobs, orders, projectStatus, documents,
+│                                    # issues, warranty, accounting, analytics, reports, admin,
+│                                    # gtpSchema, documentTemplates
+├── views/                          # EJS templates, including views/documents/generate/ (PDF layout +
+│                                    # report-template.ejs), views/warranty/, views/accounting/,
+│                                    # views/reports/, views/portal/ (Customer Portal, its own minimal
+│                                    # chrome - no shared sidebar/header), and views/partials/widgets/
 ├── public/
-│   ├── css/style.css               # Design tokens, dark mode, all custom component styles
+│   ├── css/style.css               # Design tokens, dark mode, module tiles/entity cards/tabs, motion
 │   ├── js/{csrf,theme}.js           # CSRF auto-injection, dark-mode toggle
+│   ├── js/animate.js                 # Scroll-in motion for [data-animate] elements
+│   ├── js/viewToggle.js               # Table/grid view toggle on list pages (per-page localStorage)
 │   └── branding/                     # Uploaded company logo (public - not confidential)
 └── uploads/                        # Confidential document files (private, outside public/)
 ```
@@ -494,13 +654,24 @@ once, in this order (each is idempotent-ish per its own comments, but back up yo
 regardless):
 
 ```bash
-mysql -u <user> -p <database> < db/upgrade_orders_lots.sql
-mysql -u <user> -p <database> < db/upgrade_project_status.sql
-mysql -u <user> -p <database> < db/upgrade_addons.sql
-mysql -u <user> -p <database> < db/upgrade_gtp_schema.sql
-mysql -u <user> -p <database> < db/upgrade_document_generation.sql
-mysql -u <user> -p <database> < db/upgrade_dashboard_widgets.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_orders_lots.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_project_status.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_addons.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_gtp_schema.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_document_generation.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_dashboard_widgets.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_modules_rbac.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_warranty.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_ocr.sql
+mysql --default-character-set=utf8mb4 -u <user> -p <database> < db/upgrade_customer_portal.sql
 ```
+
+**The `--default-character-set=utf8mb4` flag is not optional** - without it, the `mysql` CLI falls
+back to its own default charset (often `latin1`) for the session, which silently corrupts any `°`,
+`²`, or other non-ASCII character in the file being loaded (e.g. a GTP field unit like `°C` gets
+permanently stored as `Â°C`). This isn't a risk for `npm run seed`/`npm run create-admin` (those go
+through `mysql2` in Node, which already defaults to `utf8mb4`) - it only bites raw `mysql <file.sql`
+invocations like the ones above.
 
 Then `npm install` (a few packages were added since the original build) and restart the app.
 

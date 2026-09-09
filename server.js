@@ -19,7 +19,22 @@ const rateLimit = require('express-rate-limit');
 const pinoHttp = require('pino-http');
 
 const logger = require('./config/logger');
+
+// Safety net: without this, an unhandled promise rejection anywhere in the
+// app (Node 15+ defaults to *crashing* the process on those, not just
+// logging) takes the entire site down - which is exactly what happened when
+// a stray Puppeteer/WhatsApp browser-launch failure wasn't fully caught.
+// WhatsApp is an explicitly optional subsystem (see utils/whatsapp.js) and
+// must never be able to kill core request handling for everyone else.
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'Unhandled promise rejection (process kept alive)');
+});
+process.on('uncaughtException', (err) => {
+  logger.error({ err }, 'Uncaught exception (process kept alive)');
+});
+
 const { attachUser, requireAuth } = require('./middleware/auth');
+const { attachCustomerUser } = require('./middleware/customerAuth');
 const upload = require('./middleware/upload');
 const uploadLogo = require('./middleware/uploadLogo');
 const { doubleCsrfProtection, invalidCsrfTokenError } = require('./config/csrf');
@@ -131,10 +146,13 @@ app.use(flash());
 app.post('/documents', requireAuth, upload.single('file'));
 app.post('/documents/:id/edit', requireAuth, upload.single('file'));
 app.post('/jobs/:id/stage-documents', requireAuth, upload.single('file'));
+app.post('/warranty/claims/:claimId/documents', requireAuth, upload.single('file'));
+app.post('/accounting', requireAuth, upload.single('file'));
 app.post('/admin/settings', requireAuth, uploadLogo.single('logo'));
 
 app.use(doubleCsrfProtection);
 app.use(attachUser);
+app.use(attachCustomerUser);
 
 app.use((req, res, next) => {
   res.locals.success = req.flash('success');
@@ -144,16 +162,25 @@ app.use((req, res, next) => {
 
 // Routes
 app.post('/login', loginLimiter);
+app.post('/portal/login', loginLimiter);
 app.use((req, res, next) => (/\/generate-document$/.test(req.path) ? generateDocumentLimiter(req, res, next) : next()));
 app.use(require('./routes/auth'));
+app.use(require('./routes/customerPortal'));
+app.use(require('./routes/adminCustomers'));
 app.use(require('./routes/search'));
 app.use(require('./routes/dashboard'));
+app.use(require('./routes/sales'));
+app.use(require('./routes/manufacturing'));
+app.use(require('./routes/dispatch'));
 app.use(require('./routes/jobs'));
 app.use(require('./routes/orders'));
 app.use(require('./routes/projectStatus'));
 app.use(require('./routes/documents'));
 app.use(require('./routes/issues'));
+app.use(require('./routes/warranty'));
+app.use(require('./routes/accounting'));
 app.use(require('./routes/analytics'));
+app.use(require('./routes/reports'));
 app.use(require('./routes/admin'));
 app.use(require('./routes/gtpSchema'));
 app.use(require('./routes/documentTemplates'));
@@ -184,20 +211,31 @@ app.use((err, req, res, next) => {
 // not when required as a module (e.g. by the test suite via supertest).
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, async () => {
-    logger.info(`TRAFO 360 (Trafo Power & Electricals - Workflow & DMS) running on port ${PORT}`);
-    startScheduler();
 
-    // Resume the WhatsApp Web session automatically on restart if it was
-    // previously enabled - fully optional, never blocks server startup.
-    try {
-      const enabled = await whatsapp.isEnabledInSettings();
-      if (enabled) {
-        whatsapp.initWhatsApp().catch(err => logger.error({ err }, '[whatsapp] init error'));
+  // Wait for the session store's table to be confirmed ready before binding
+  // the port - express-mysql-session creates it asynchronously in the
+  // background otherwise, and a login landing in that window gets its
+  // session silently dropped (looks exactly like "wrong password" even with
+  // the right one). This only matters for the first moment after a boot.
+  sessionStore.onReady().catch(err => {
+    logger.error({ err }, 'Session store failed to initialize');
+    process.exit(1);
+  }).then(() => {
+    app.listen(PORT, async () => {
+      logger.info(`TRAFO 360 (Trafo Power & Electricals - Workflow & DMS) running on port ${PORT}`);
+      startScheduler();
+
+      // Resume the WhatsApp Web session automatically on restart if it was
+      // previously enabled - fully optional, never blocks server startup.
+      try {
+        const enabled = await whatsapp.isEnabledInSettings();
+        if (enabled) {
+          whatsapp.initWhatsApp().catch(err => logger.error({ err }, '[whatsapp] init error'));
+        }
+      } catch (err) {
+        logger.error({ err }, '[whatsapp] Could not check WhatsApp setting on boot');
       }
-    } catch (err) {
-      logger.error({ err }, '[whatsapp] Could not check WhatsApp setting on boot');
-    }
+    });
   });
 }
 
