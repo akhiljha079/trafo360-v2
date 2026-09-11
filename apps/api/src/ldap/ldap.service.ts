@@ -245,13 +245,27 @@ export class LdapService {
     try {
       await this.bind(client, values[KEYS.bindUser]!, values[KEYS.bindPassword]!);
       const users = await this.search(client, values[KEYS.userSearchDn] || values[KEYS.baseDn]!, {
-        filter: "(&(objectClass=user)(sAMAccountName=*))",
+        // objectClass=computer is a *subclass* of objectClass=user in AD's
+        // schema, so machine accounts (SOMEHOST$) match "objectClass=user"
+        // too and would otherwise get synced in as noise "people" -
+        // reproduced live against a real AD server, ~40% of the raw
+        // results were computer accounts.
+        filter: "(&(objectClass=user)(sAMAccountName=*)(!(objectClass=computer)))",
         scope: "sub",
         attributes: ["sAMAccountName", "displayName", "cn", "mail", "mobile", "telephoneNumber", "department", "memberOf"],
       });
+      // Real AD deployments very often don't populate the `mail` attribute
+      // at all unless Exchange/O365 is in the mix (confirmed live: a real
+      // customer's AD had zero users with `mail` set) - requiring it made
+      // every single sync a no-op. User.email is NOT NULL + unique, so
+      // some value is required either way; synthesize the conventional
+      // <username>@<domain> UPN-style address rather than silently
+      // dropping every real person from the sync.
+      const emailDomain = values[KEYS.domain] || values[KEYS.host] || "local";
 
       for (const entry of users) {
-        if (!entry.username || !entry.email) continue;
+        if (!entry.username) continue;
+        if (!entry.email) entry.email = `${entry.username}@${emailDomain}`.toLowerCase();
         for (const groupDn of entry.memberOf) {
           await this.prisma.adGroup.upsert({
             where: { dn: groupDn },
