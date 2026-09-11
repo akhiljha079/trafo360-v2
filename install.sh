@@ -22,7 +22,8 @@
 #      confirms password auth (scram-sha-256) is actually enforced - not
 #      left on a permissive default
 #   5. Generates .env with fresh secrets and a generated admin password
-#   6. npm install, builds every workspace, runs migrations + seed
+#   6. npm install, generates the Prisma client + runs migrations, builds
+#      every workspace, seeds default data
 #   7. Does NOT touch Nginx/SSL/firewall ports 80/443 - that's aaPanel's job.
 #      This script only opens SSH + aaPanel's own panel port so you can
 #      reach aaPanel itself. Once aaPanel is installed (this script detects
@@ -277,16 +278,24 @@ chmod 600 "$APP_DIR/.env"
 log "Installing dependencies (this takes a few minutes)..."
 sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && npm install"
 
+# Prisma Client's generated types (what apps/api's TypeScript actually
+# imports from "@prisma/client") only reflect prisma/schema.prisma once
+# `prisma generate` has run - `npm install` alone does NOT regenerate it
+# (no postinstall hook). Must happen before the build below, not after:
+# any schema change the app code already references (a new column, say)
+# fails to compile against a stale client. Safe to run before migrate
+# deploy too - generate only reads schema.prisma, it never touches the
+# database.
+log "Running database migrations..."
+sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && npx prisma generate --schema=prisma/schema.prisma"
+sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && npx prisma migrate deploy --schema=prisma/schema.prisma"
+
 log "Building all workspaces (libs/shared, api, worker, web)..."
 sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && npm run build"
 
 for artifact in apps/api/dist/main.js apps/worker/dist/main.js apps/web/dist/index.html libs/shared/dist/index.js; do
   [[ -f "$APP_DIR/$artifact" ]] || fail "Build did not produce $artifact - check the build output above."
 done
-
-log "Running database migrations..."
-sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && npx prisma generate --schema=prisma/schema.prisma"
-sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && npx prisma migrate deploy --schema=prisma/schema.prisma"
 
 log "Seeding default roles, permissions, and workflow template..."
 sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && npx tsx prisma/seed.ts"
