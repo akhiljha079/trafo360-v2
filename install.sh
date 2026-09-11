@@ -291,7 +291,12 @@ log "Configuring PM2 to auto-start on boot..."
 # daemon under the *invoking* user's home instead - the bash -c wrapper
 # used everywhere else in this script doesn't have that problem, so every
 # pm2 call here goes through it too, not just the ones that need cd.
-STARTUP_CMD="$(sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 startup systemd -u '$APP_USER' --hp '/home/$APP_USER'" | tail -1)"
+# `pm2 startup` run as a non-root user always exits non-zero - it can't
+# install the systemd unit itself, so it just prints the root command to
+# run and exits 1. That's expected, not a failure; `|| true` keeps
+# set -euo pipefail from treating it as one.
+STARTUP_CMD="$(sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 startup systemd -u '$APP_USER' --hp '/home/$APP_USER'" 2>&1 | tail -1 || true)"
+[[ "$STARTUP_CMD" == sudo* ]] || fail "Could not determine the PM2 startup command (got: $STARTUP_CMD)"
 eval "$STARTUP_CMD" >/dev/null
 sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 save"
 
