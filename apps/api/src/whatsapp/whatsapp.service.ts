@@ -81,11 +81,20 @@ export class WhatsappService {
       // no Chromium binary available - see docs/BUILD_PROGRESS.md.
       const outcome = await new Promise<{ qrDataUrl: string | null; status: "CONNECTED" | "CONNECTING" | "TIMED_OUT" }>(
         (resolve) => {
+          // 60s, not 15s: a first-ever launch on a fresh server has to
+          // download Chromium components and render WhatsApp Web's own
+          // (heavy) JS bundle from scratch - 15s reliably timed out on a
+          // real VM even though the browser launched fine and was still
+          // making progress. Subsequent connects are much faster once
+          // components are cached.
+          const timeoutId = setTimeout(() => resolve({ qrDataUrl: null, status: "TIMED_OUT" }), 60000);
           this.client.on("qr", async (qr: string) => {
+            clearTimeout(timeoutId);
             this.lastQrDataUrl = await QRCode.toDataURL(qr);
             resolve({ qrDataUrl: this.lastQrDataUrl, status: "CONNECTING" });
           });
           this.client.on("ready", async () => {
+            clearTimeout(timeoutId);
             this.lastQrDataUrl = null;
             await this.prisma.whatsappSession.update({
               where: { id: session.id },
@@ -96,11 +105,8 @@ export class WhatsappService {
           this.client.on("disconnected", async () => {
             await this.prisma.whatsappSession.update({ where: { id: session.id }, data: { status: "DISCONNECTED" } });
           });
-          // Give up waiting for a QR/ready event rather than hanging forever
-          // if the browser fails to launch at all - this is its own
-          // distinct outcome, never silently reported as success.
-          setTimeout(() => resolve({ qrDataUrl: null, status: "TIMED_OUT" }), 15000);
           this.client.initialize().catch((err: Error) => {
+            clearTimeout(timeoutId);
             this.logger.error(`WhatsApp client.initialize() rejected: ${err.message}`);
             resolve({ qrDataUrl: null, status: "TIMED_OUT" });
           });
@@ -108,25 +114,38 @@ export class WhatsappService {
       );
 
       if (outcome.status === "TIMED_OUT") {
+        // Without this, the underlying Chromium process (and its lock on
+        // WHATSAPP_SESSION_PATH) keeps running in the background even
+        // though the caller was told it failed - every retry would then
+        // fail immediately with "the browser is already running for
+        // <path>", masking whatever the real problem was. Reproduced live:
+        // a timed-out connect() left Chromium running for 9+ minutes,
+        // silently breaking every subsequent Connect click.
+        await this.destroyClient();
         await this.prisma.whatsappSession.update({ where: { id: session.id }, data: { status: "DISCONNECTED" } });
-        throw new Error("WhatsApp Web did not respond with a QR code or ready event within 15s - the browser likely failed to launch");
+        throw new Error("WhatsApp Web did not respond with a QR code or ready event within 60s - the browser likely failed to launch");
       }
       return outcome;
     } catch (err) {
+      await this.destroyClient();
       this.logger.error(`WhatsApp connect failed: ${(err as Error).message}`);
       await this.prisma.whatsappSession.update({ where: { id: session.id }, data: { status: "DISCONNECTED" } });
       throw err;
     }
   }
 
-  async disconnect(): Promise<void> {
-    const session = await this.getSessionRow();
+  private async destroyClient(): Promise<void> {
     try {
       await this.client?.destroy();
     } catch (err) {
       this.logger.warn(`WhatsApp destroy() failed (ignoring): ${(err as Error).message}`);
     }
     this.client = null;
+  }
+
+  async disconnect(): Promise<void> {
+    const session = await this.getSessionRow();
+    await this.destroyClient();
     this.lastQrDataUrl = null;
     await this.prisma.whatsappSession.update({ where: { id: session.id }, data: { status: "DISCONNECTED" } });
   }
