@@ -143,7 +143,15 @@ export class LdapService {
           results.push({
             dn: entry.pojo.objectName ?? "",
             username: obj.sAMAccountName?.[0] ?? "",
-            name: obj.displayName?.[0] ?? obj.cn?.[0] ?? "",
+            // cn first, not displayName: cn forms the object's RDN, so AD
+            // structurally guarantees it's unique within its container -
+            // displayName is free-text and optional, and real-world AD data
+            // is often sloppy about it (confirmed live: a real customer's
+            // directory had ~20 unrelated accounts all sharing the same
+            // displayName, apparently copy-pasted from a template account
+            // when each was created, while cn correctly held each person's
+            // actual name).
+            name: obj.cn?.[0] ?? obj.displayName?.[0] ?? "",
             email: obj.mail?.[0] ?? "",
             mobile: obj.mobile?.[0] ?? obj.telephoneNumber?.[0],
             department: obj.department?.[0],
