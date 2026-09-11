@@ -68,6 +68,16 @@ export class WhatsappService {
   private async doConnect(): Promise<{ qrDataUrl: string | null; status: string }> {
     const session = await this.getSessionRow();
     if (session.status === "CONNECTED") return { qrDataUrl: null, status: "CONNECTED" };
+    // A QR was already issued and the browser is still alive waiting for a
+    // scan (e.g. the admin refreshed the page, or clicked Connect again to
+    // re-view the code) - re-launching would spawn a second Chromium
+    // against the same session path, which fails immediately with "the
+    // browser is already running for <path>" since the first is still
+    // there. Reproduced live: worked once, then broke on the very next
+    // Connect click because of exactly this.
+    if (session.status === "CONNECTING" && this.client && this.lastQrDataUrl) {
+      return { qrDataUrl: this.lastQrDataUrl, status: "CONNECTING" };
+    }
 
     await this.prisma.whatsappSession.update({ where: { id: session.id }, data: { status: "CONNECTING" } });
 
