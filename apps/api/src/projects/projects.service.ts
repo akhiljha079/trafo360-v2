@@ -123,7 +123,22 @@ export class ProjectsService {
     return project;
   }
 
+  /** Edit/delete are restricted to the System Administrator role
+   * specifically, not just whoever holds project.edit/project.delete - the
+   * default seed also grants project.edit to Document Coordinator (they
+   * need it for day-to-day project setup), but editing core project
+   * fields and removing a project outright are deliberately admin-only,
+   * by explicit request - not something the permission system's normal
+   * role-editable grants should be able to widen. */
+  private async assertIsAdmin(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { role: true } });
+    if (user?.role?.name !== "System Administrator") {
+      throw new ForbiddenException("Only a System Administrator can do this");
+    }
+  }
+
   async update(id: string, dto: UpdateProjectDto, actorUserId: string, ip?: string) {
+    await this.assertIsAdmin(actorUserId);
     const before = await this.prisma.project.findUnique({ where: { id } });
     if (!before) throw new NotFoundException("Project not found");
     const project = await this.prisma.project.update({ where: { id }, data: dto, include: projectListInclude });
@@ -137,6 +152,38 @@ export class ProjectsService {
       ipAddress: ip,
     });
     return project;
+  }
+
+  /** Postgres itself is the safety net here: Document/PhysicalFile rows
+   * reference projectId without ON DELETE CASCADE (deliberately, per
+   * schema.prisma), so deleting a project that still has real content
+   * fails with a foreign key violation rather than silently cascading
+   * through uploaded files and physical file records. Members/stages *do*
+   * cascade (pure project-scoped bookkeeping, nothing anyone would miss). */
+  async delete(id: string, actorUserId: string, ip?: string): Promise<void> {
+    await this.assertIsAdmin(actorUserId);
+    const project = await this.prisma.project.findUnique({ where: { id } });
+    if (!project) throw new NotFoundException("Project not found");
+
+    try {
+      await this.prisma.project.delete({ where: { id } });
+    } catch (err) {
+      if ((err as { code?: string }).code === "P2003" || (err as { code?: string }).code === "P2014") {
+        throw new ConflictException(
+          "This project still has documents, physical files, or other records tied to it - remove those first.",
+        );
+      }
+      throw err;
+    }
+
+    await this.audit.log({
+      userId: actorUserId,
+      action: "PROJECT_DELETED",
+      objectType: "Project",
+      objectId: id,
+      oldValue: { projectNo: project.projectNo, name: project.name },
+      ipAddress: ip,
+    });
   }
 
   async addMember(projectId: string, dto: AddProjectMemberDto, actorUserId: string, ip?: string) {

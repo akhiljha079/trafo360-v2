@@ -1,8 +1,29 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Card, Col, Descriptions, Row, Select, Table, Tag, Typography } from "antd";
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Descriptions,
+  Form,
+  Input,
+  InputNumber,
+  message,
+  Modal,
+  Popconfirm,
+  Row,
+  Select,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
+import { useAuth } from "../auth/useAuth";
 import { PhysicalFileDrawer } from "./PhysicalFileDrawer";
 import { ProjectWorkflowChecklist } from "./ProjectWorkflowChecklist";
 
@@ -35,6 +56,14 @@ export function ProjectDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [addUserId, setAddUserId] = useState<string | undefined>();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm] = Form.useForm();
+  // Deliberately a role check, not a permission check - project.edit is
+  // also granted to Document Coordinator by default (they need it for
+  // day-to-day project setup fields), but editing/removing a project here
+  // is admin-only by explicit request, independent of whatever the
+  // permission system happens to grant.
+  const isAdmin = useAuth((s) => s.user?.roleName === "System Administrator");
 
   const projectQuery = useQuery({
     queryKey: ["project", id],
@@ -69,6 +98,34 @@ export function ProjectDetailPage() {
     qc.invalidateQueries({ queryKey: ["project", id] });
   }
 
+  async function onEditSave() {
+    const values = await editForm.validateFields();
+    try {
+      await api.patch(`/projects/${id}`, {
+        ...values,
+        targetDeliveryDate: values.targetDeliveryDate?.toISOString(),
+        actualDispatchDate: values.actualDispatchDate?.toISOString(),
+      });
+      message.success("Project updated");
+      setEditOpen(false);
+      qc.invalidateQueries({ queryKey: ["project", id] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Update failed");
+    }
+  }
+
+  async function onDelete() {
+    try {
+      await api.delete(`/projects/${id}`);
+      message.success("Project deleted");
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      navigate("/projects");
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Delete failed");
+    }
+  }
+
   if (projectQuery.error instanceof ApiError && projectQuery.error.status === 403) {
     return (
       <Alert
@@ -87,9 +144,39 @@ export function ProjectDetailPage() {
       <Button type="link" onClick={() => navigate("/projects")} style={{ paddingLeft: 0 }}>
         ← All Projects
       </Button>
-      <Typography.Title level={3}>
-        {p.projectNo} — {p.name}
-      </Typography.Title>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <Typography.Title level={3} style={{ marginBottom: 8 }}>
+          {p.projectNo} — {p.name}
+        </Typography.Title>
+        {isAdmin && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button
+              icon={<EditOutlined />}
+              onClick={() => {
+                editForm.setFieldsValue({
+                  ...p,
+                  targetDeliveryDate: p.targetDeliveryDate ? dayjs(p.targetDeliveryDate) : undefined,
+                  actualDispatchDate: p.actualDispatchDate ? dayjs(p.actualDispatchDate) : undefined,
+                });
+                setEditOpen(true);
+              }}
+            >
+              Edit
+            </Button>
+            <Popconfirm
+              title="Delete this project?"
+              description="Only possible if it has no documents, physical files, or other records tied to it yet."
+              okText="Delete"
+              okButtonProps={{ danger: true }}
+              onConfirm={onDelete}
+            >
+              <Button danger icon={<DeleteOutlined />}>
+                Delete
+              </Button>
+            </Popconfirm>
+          </div>
+        )}
+      </div>
       <div style={{ marginBottom: 16 }}>
         <Tag color="blue">{p.status.replace(/_/g, " ")}</Tag>
         <Tag>{p.confidentialityLevel.name}</Tag>
@@ -181,6 +268,44 @@ export function ProjectDetailPage() {
         physicalFileId={physicalFileDrawerOpen ? (physicalFileQuery.data?.id ?? null) : null}
         onClose={() => setPhysicalFileDrawerOpen(false)}
       />
+
+      <Modal title="Edit Project" open={editOpen} onOk={onEditSave} onCancel={() => setEditOpen(false)} okText="Save" width={640}>
+        <Form form={editForm} layout="vertical">
+          <Form.Item name="name" label="Project name" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="customerPo" label="Customer PO">
+            <Input />
+          </Form.Item>
+          <Form.Item name="transformerType" label="Transformer type">
+            <Input />
+          </Form.Item>
+          <Form.Item name="rating" label="Rating">
+            <Input />
+          </Form.Item>
+          <Form.Item name="voltage" label="Voltage">
+            <Input />
+          </Form.Item>
+          <Form.Item name="transformerSerial" label="Serial No">
+            <Input />
+          </Form.Item>
+          <Form.Item name="quantity" label="Quantity">
+            <InputNumber min={1} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="location" label="Location">
+            <Input />
+          </Form.Item>
+          <Form.Item name="targetDeliveryDate" label="Target delivery date">
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="actualDispatchDate" label="Actual dispatch date">
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="remarks" label="Remarks">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from "@nestjs/common";
 import { Auth } from "../common/auth.decorator";
 import { ClientIp, CurrentUserId } from "../common/current-user.decorator";
 import { AddProjectMemberDto } from "./dto/add-member.dto";
@@ -35,6 +35,14 @@ export class ProjectsController {
   @Auth("project.edit")
   update(@Param("id") id: string, @Body() dto: UpdateProjectDto, @CurrentUserId() userId: string, @ClientIp() ip?: string) {
     return this.projects.update(id, dto, userId, ip);
+  }
+
+  @Delete(":id")
+  @HttpCode(200)
+  @Auth("project.delete")
+  async remove(@Param("id") id: string, @CurrentUserId() userId: string, @ClientIp() ip?: string) {
+    await this.projects.delete(id, userId, ip);
+    return { ok: true };
   }
 
   @Post(":id/members")
