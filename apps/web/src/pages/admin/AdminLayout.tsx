@@ -8,6 +8,7 @@ const TABS = [
   { key: "departments", label: "Departments" },
   { key: "ad-config", label: "AD / LDAP" },
   { key: "smtp", label: "SMTP" },
+  { key: "storage", label: "Storage" },
   { key: "whatsapp", label: "WhatsApp Web" },
   { key: "notifications", label: "Notification Rules" },
 ];

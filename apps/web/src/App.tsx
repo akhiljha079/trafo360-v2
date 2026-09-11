@@ -7,6 +7,7 @@ import { DepartmentsPage } from "./pages/admin/DepartmentsPage";
 import { NotificationSettingsPage } from "./pages/admin/NotificationSettingsPage";
 import { RolesPage } from "./pages/admin/RolesPage";
 import { SmtpSettingsPage } from "./pages/admin/SmtpSettingsPage";
+import { StorageSettingsPage } from "./pages/admin/StorageSettingsPage";
 import { UsersPage } from "./pages/admin/UsersPage";
 import { WhatsappSettingsPage } from "./pages/admin/WhatsappSettingsPage";
 import { AuditLogsPage } from "./pages/AuditLogsPage";
@@ -48,6 +49,7 @@ export function App() {
               <Route path="departments" element={<DepartmentsPage />} />
               <Route path="ad-config" element={<AdConfigPage />} />
               <Route path="smtp" element={<SmtpSettingsPage />} />
+              <Route path="storage" element={<StorageSettingsPage />} />
               <Route path="whatsapp" element={<WhatsappSettingsPage />} />
               <Route path="notifications" element={<NotificationSettingsPage />} />
             </Route>
