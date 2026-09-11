@@ -215,6 +215,7 @@ export function UsersPage() {
                     layout="vertical"
                     initialValues={{
                       name: editUser.name,
+                      email: editUser.email,
                       mobile: editUser.mobile,
                       designation: editUser.designation,
                       employeeId: editUser.employeeId,
@@ -225,6 +226,18 @@ export function UsersPage() {
                   >
                     <Form.Item name="name" label="Full name">
                       <Input disabled={editUser.source === "AD"} />
+                    </Form.Item>
+                    <Form.Item
+                      name="email"
+                      label="Email"
+                      rules={[{ required: true, type: "email" }]}
+                      extra={
+                        editUser.source === "AD"
+                          ? "AD accounts without a mail attribute get a synced.username@domain placeholder - correct it here."
+                          : undefined
+                      }
+                    >
+                      <Input />
                     </Form.Item>
                     <Form.Item name="mobile" label="Mobile">
                       <Input />

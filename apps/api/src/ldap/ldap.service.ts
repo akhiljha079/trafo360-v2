@@ -265,6 +265,7 @@ export class LdapService {
 
       for (const entry of users) {
         if (!entry.username) continue;
+        const hasRealEmail = !!entry.email;
         if (!entry.email) entry.email = `${entry.username}@${emailDomain}`.toLowerCase();
         for (const groupDn of entry.memberOf) {
           await this.prisma.adGroup.upsert({
@@ -278,7 +279,18 @@ export class LdapService {
         if (existing) {
           await this.prisma.user.update({
             where: { id: existing.id },
-            data: { name: entry.name || existing.name, email: entry.email, mobile: entry.mobile, source: "AD" },
+            data: {
+              name: entry.name || existing.name,
+              // Only overwrite a stored email when AD actually has a real
+              // `mail` value this time. Otherwise a resync would silently
+              // stomp an admin's manual correction of the synthesized
+              // placeholder back to that same placeholder every time -
+              // there'd be no way to fix an AD-synced user's email that
+              // survives past the next "Sync Now" click.
+              email: hasRealEmail ? entry.email : existing.email,
+              mobile: entry.mobile,
+              source: "AD",
+            },
           });
           updated += 1;
         } else {

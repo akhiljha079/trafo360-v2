@@ -115,10 +115,16 @@ export class UsersService {
     const before = await this.prisma.user.findUnique({ where: { id } });
     if (!before) throw new NotFoundException("User not found");
 
+    if (dto.email && dto.email !== before.email) {
+      const emailTaken = await this.prisma.user.findFirst({ where: { email: dto.email, NOT: { id } } });
+      if (emailTaken) throw new ConflictException("A user with that email already exists");
+    }
+
     const user = await this.prisma.user.update({
       where: { id },
       data: {
         name: dto.name,
+        email: dto.email,
         mobile: dto.mobile,
         designation: dto.designation,
         employeeId: dto.employeeId,
@@ -134,7 +140,7 @@ export class UsersService {
       action: "USER_UPDATED",
       objectType: "User",
       objectId: id,
-      oldValue: { departmentId: before.departmentId, roleId: before.roleId, status: before.status },
+      oldValue: { email: before.email, departmentId: before.departmentId, roleId: before.roleId, status: before.status },
       newValue: dto,
       ipAddress: ip,
     });
