@@ -283,12 +283,17 @@ log "Starting the application under PM2..."
 sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 delete trafo360-api trafo360-worker >/dev/null 2>&1 || true"
 sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 start apps/api/dist/main.js --name trafo360-api"
 sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 start apps/worker/dist/main.js --name trafo360-worker"
-sudo -u "$APP_USER" pm2 save
+sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 save"
 
 log "Configuring PM2 to auto-start on boot..."
-STARTUP_CMD="$(sudo -u "$APP_USER" pm2 startup systemd -u "$APP_USER" --hp "/home/$APP_USER" | tail -1)"
+# Bare `sudo -u user pm2 ...` (no shell wrapper) has been observed on some
+# systems to not pick up the target user's $HOME correctly, spawning a PM2
+# daemon under the *invoking* user's home instead - the bash -c wrapper
+# used everywhere else in this script doesn't have that problem, so every
+# pm2 call here goes through it too, not just the ones that need cd.
+STARTUP_CMD="$(sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 startup systemd -u '$APP_USER' --hp '/home/$APP_USER'" | tail -1)"
 eval "$STARTUP_CMD" >/dev/null
-sudo -u "$APP_USER" pm2 save
+sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 save"
 
 # ---------------------------------------------------------------------------
 # Firewall - SSH always; aaPanel's own port if aaPanel is (or will be)
@@ -306,11 +311,11 @@ ufw --force enable >/dev/null 2>&1 || true
 log "Running smoke tests..."
 sleep 5
 HEALTH="$(curl -sf "http://127.0.0.1:$API_PORT/api/health" || echo "")"
-[[ "$HEALTH" == *'"status":"ok"'* ]] || fail "API health check failed - check: sudo -u $APP_USER pm2 logs trafo360-api"
+[[ "$HEALTH" == *'"status":"ok"'* ]] || fail "API health check failed - check: sudo -u $APP_USER bash -c 'cd $APP_DIR && pm2 logs trafo360-api'"
 log "API health check: OK ($HEALTH)"
 
-API_ONLINE="$(sudo -u "$APP_USER" pm2 jlist | jq -r '.[] | select(.name=="trafo360-api") | .pm2_env.status')"
-WORKER_ONLINE="$(sudo -u "$APP_USER" pm2 jlist | jq -r '.[] | select(.name=="trafo360-worker") | .pm2_env.status')"
+API_ONLINE="$(sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 jlist" | jq -r '.[] | select(.name=="trafo360-api") | .pm2_env.status')"
+WORKER_ONLINE="$(sudo -u "$APP_USER" bash -c "cd '$APP_DIR' && pm2 jlist" | jq -r '.[] | select(.name=="trafo360-worker") | .pm2_env.status')"
 [[ "$API_ONLINE" == "online" ]] || fail "trafo360-api is not online (status: $API_ONLINE)"
 [[ "$WORKER_ONLINE" == "online" ]] || fail "trafo360-worker is not online (status: $WORKER_ONLINE)"
 log "PM2 processes: trafo360-api ($API_ONLINE), trafo360-worker ($WORKER_ONLINE)"
@@ -356,7 +361,7 @@ echo "      }"
 echo
 echo " 4. SSL tab -> Let's Encrypt -> Apply, then toggle Force HTTPS."
 echo "    Afterward, update APP_URL in $APP_DIR/.env to https://$DOMAIN and run:"
-echo "      sudo -u $APP_USER pm2 restart trafo360-api"
+echo "      sudo -u $APP_USER bash -c 'cd $APP_DIR && pm2 restart trafo360-api'"
 echo
 echo " 5. Verify once the site is live:"
 echo "      curl -I https://$DOMAIN/.env       # must be 404, not 200"
