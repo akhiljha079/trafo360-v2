@@ -128,10 +128,20 @@ CHROMIUM_DEPS=(
 )
 MISSING_DEPS=()
 for pkg in "${CHROMIUM_DEPS[@]}"; do
-  apt-get install -y "$pkg" >/dev/null 2>&1 || MISSING_DEPS+=("$pkg")
+  # Visible per-package progress (not silenced) and a 60s timeout per
+  # package, so a single slow mirror or renamed package can't look
+  # indistinguishable from the whole script being hung - it either
+  # succeeds, fails fast, or gets killed and reported, never silent.
+  printf '    %s... ' "$pkg"
+  if timeout 60 apt-get install -y "$pkg" >/dev/null 2>&1; then
+    echo "ok"
+  else
+    echo "skipped"
+    MISSING_DEPS+=("$pkg")
+  fi
 done
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
-  warn "Could not install: ${MISSING_DEPS[*]} (likely renamed in this Ubuntu point release). If WhatsApp Web's Connect button fails to launch Chromium later, check Administration -> WhatsApp Web's error and install the correctly-named equivalents by hand."
+  warn "Could not install: ${MISSING_DEPS[*]} (likely renamed in this Ubuntu point release, or timed out on a slow mirror). If WhatsApp Web's Connect button fails to launch Chromium later, check Administration -> WhatsApp Web's error and install the correctly-named equivalents by hand."
 fi
 
 # ---------------------------------------------------------------------------
