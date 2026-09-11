@@ -62,7 +62,17 @@ export class WhatsappService {
       const { Client, LocalAuth } = require("whatsapp-web.js");
       const sessionPath = this.config.get<string>("WHATSAPP_SESSION_PATH") ?? "./storage/whatsapp-session";
 
-      this.client = new Client({ authStrategy: new LocalAuth({ dataPath: sessionPath }) });
+      this.client = new Client({
+        authStrategy: new LocalAuth({ dataPath: sessionPath }),
+        // Chromium's own internal sandbox needs a privileged user namespace
+        // setup that a dedicated unprivileged service account doesn't have
+        // (fails outright on Ubuntu 23.10+'s AppArmor-restricted unprivileged
+        // user namespaces: "No usable sandbox!"). --no-sandbox is the
+        // standard trade-off for headless Chromium run by its own dedicated,
+        // otherwise-unprivileged OS user - isolation comes from that account
+        // having no other access, not from Chromium's internal sandbox.
+        puppeteer: { args: ["--no-sandbox", "--disable-setuid-sandbox"] },
+      });
 
       // Explicit outcome tracking - do NOT infer "connected" from "no QR",
       // since "timed out waiting" and "already ready" both produce a null
