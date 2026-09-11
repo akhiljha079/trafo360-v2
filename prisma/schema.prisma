@@ -478,6 +478,14 @@ model DocumentVersion {
   uploadedById   String
   createdAt      DateTime @default(now())
 
+  // OCR/text-extraction (dashboard content search) - populated by the
+  // worker's background job, never on the upload request path (extraction
+  // is too slow to hold an HTTP response open for). ocrStatus starts
+  // PENDING and the worker picks it up on its next poll; UNSUPPORTED means
+  // the mime type has no extractor (e.g. .dwg), not a failure.
+  extractedText String? @db.Text
+  ocrStatus     String  @default("PENDING") // PENDING | DONE | FAILED | UNSUPPORTED
+
   document   Document @relation("DocumentVersions", fields: [documentId], references: [id], onDelete: Cascade)
   uploadedBy User     @relation("VersionUploadedBy", fields: [uploadedById], references: [id])
 
@@ -487,6 +495,7 @@ model DocumentVersion {
 
   @@unique([documentId, versionNo])
   @@index([storageStatus])
+  @@index([ocrStatus])
 }
 
 model ApprovalWorkflow {

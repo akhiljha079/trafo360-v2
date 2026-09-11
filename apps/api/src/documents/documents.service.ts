@@ -91,6 +91,7 @@ export class DocumentsService {
                 { title: { contains: search, mode: "insensitive" as const } },
                 { project: { projectNo: { contains: search, mode: "insensitive" as const } } },
                 { project: { name: { contains: search, mode: "insensitive" as const } } },
+                { versions: { some: { extractedText: { contains: search, mode: "insensitive" as const } } } },
               ],
             }
           : {}),

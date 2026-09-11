@@ -123,7 +123,8 @@ log "Updating package lists and installing base packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y curl ca-certificates gnupg lsb-release rsync ufw jq \
-  postgresql postgresql-contrib
+  postgresql postgresql-contrib \
+  tesseract-ocr poppler-utils
 
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v)" != v20* ]]; then
   log "Installing Node.js 20 LTS (NodeSource)..."

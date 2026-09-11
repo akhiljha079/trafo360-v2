@@ -3,6 +3,7 @@ import { Card, Col, List, Row, Statistic, Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/useAuth";
+import { DocumentContentSearch } from "./DocumentContentSearch";
 
 interface DashboardSummary {
   activeProjects: number;
@@ -60,6 +61,11 @@ export function DashboardPage() {
               valueStyle={summary && summary.overdueFiles > 0 ? { color: "#cf1322" } : undefined}
             />
           </Card>
+        </Col>
+      </Row>
+      <Row style={{ marginTop: 24 }}>
+        <Col span={24}>
+          <DocumentContentSearch />
         </Col>
       </Row>
       <Row gutter={16} style={{ marginTop: 24 }}>

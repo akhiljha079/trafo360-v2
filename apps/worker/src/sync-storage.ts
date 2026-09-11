@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { copyLocalToNfs, isNfsHealthy, removeLocalPending } from "@trafo360/shared";
 import * as path from "node:path";
+import { getNfsRoot } from "./storage-config";
 
 const MAX_ATTEMPTS = 5;
 
@@ -16,7 +17,7 @@ const MAX_ATTEMPTS = 5;
  * having in production, but not a functional requirement for this logic to
  * be correct today. */
 export async function runSyncCycle(prisma: PrismaClient): Promise<void> {
-  const nfsRoot = path.resolve(process.env.NFS_MOUNT_PATH ?? "./storage/nfs-mock");
+  const nfsRoot = await getNfsRoot(prisma);
   const localRoot = path.resolve(process.env.LOCAL_STORAGE_PATH ?? "./storage/local");
 
   const pending = await prisma.documentVersion.findMany({

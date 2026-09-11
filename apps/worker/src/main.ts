@@ -3,6 +3,7 @@ import * as dotenv from "dotenv";
 import * as path from "node:path";
 import { runCertificateExpiryCheck } from "./check-certificate-expiry";
 import { runOverdueCheck } from "./mark-overdue";
+import { runOcrCycle } from "./run-ocr";
 import { runSyncCycle } from "./sync-storage";
 
 // Background worker process (spec §61). Storage sync (spec §37) and
@@ -29,6 +30,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env"), quiet: true });
 const SYNC_INTERVAL_MS = 10_000;
 const OVERDUE_CHECK_INTERVAL_MS = 60_000;
 const CERTIFICATE_EXPIRY_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h - the 4-day reminder cadence is enforced server-side, not by this interval
+const OCR_INTERVAL_MS = 15_000; // each cycle processes a small batch - see BATCH_SIZE in run-ocr.ts
 
 const prisma = new PrismaClient();
 
@@ -36,7 +38,7 @@ async function main() {
   await prisma.$connect();
   // eslint-disable-next-line no-console
   console.log(
-    `[worker] connected to database, storage sync every ${SYNC_INTERVAL_MS / 1000}s, overdue check every ${OVERDUE_CHECK_INTERVAL_MS / 1000}s`,
+    `[worker] connected to database, storage sync every ${SYNC_INTERVAL_MS / 1000}s, overdue check every ${OVERDUE_CHECK_INTERVAL_MS / 1000}s, OCR every ${OCR_INTERVAL_MS / 1000}s`,
   );
 
   const syncTick = async () => {
@@ -63,13 +65,23 @@ async function main() {
       console.error("[worker] certificate expiry check error", err);
     }
   };
+  const ocrTick = async () => {
+    try {
+      await runOcrCycle(prisma);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[worker] OCR cycle error", err);
+    }
+  };
 
   await syncTick();
   await overdueTick();
   await certificateExpiryTick();
+  await ocrTick();
   setInterval(syncTick, SYNC_INTERVAL_MS);
   setInterval(overdueTick, OVERDUE_CHECK_INTERVAL_MS);
   setInterval(certificateExpiryTick, CERTIFICATE_EXPIRY_CHECK_INTERVAL_MS);
+  setInterval(ocrTick, OCR_INTERVAL_MS);
 }
 
 main().catch((err) => {

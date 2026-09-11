@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Input, Table, Tag, Typography } from "antd";
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { DocumentDetailDrawer } from "./DocumentDetailDrawer";
 
@@ -24,8 +25,9 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function DocumentLibraryPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
-  const [openDocumentId, setOpenDocumentId] = useState<string | null>(null);
+  const [openDocumentId, setOpenDocumentId] = useState<string | null>(searchParams.get("open"));
 
   const query = useQuery({
     queryKey: ["document-library", search],
@@ -70,7 +72,16 @@ export function DocumentLibraryPage() {
         ]}
       />
 
-      <DocumentDetailDrawer documentId={openDocumentId} onClose={() => setOpenDocumentId(null)} />
+      <DocumentDetailDrawer
+        documentId={openDocumentId}
+        onClose={() => {
+          setOpenDocumentId(null);
+          if (searchParams.has("open")) {
+            searchParams.delete("open");
+            setSearchParams(searchParams, { replace: true });
+          }
+        }}
+      />
     </div>
   );
 }
