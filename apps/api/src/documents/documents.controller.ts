@@ -1,8 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   Res,
@@ -15,6 +18,7 @@ import { memoryStorage } from "multer";
 import { Auth } from "../common/auth.decorator";
 import { ClientIp, CurrentUserId } from "../common/current-user.decorator";
 import { DecideApprovalDto } from "./dto/decide-approval.dto";
+import { UpdateDocumentDto } from "./dto/update-document.dto";
 import { UploadDocumentDto } from "./dto/upload-document.dto";
 import { DocumentsService } from "./documents.service";
 
@@ -56,6 +60,20 @@ export class DocumentsController {
   @Auth("document.view")
   get(@Param("id") id: string, @CurrentUserId() userId: string) {
     return this.documents.get(id, userId);
+  }
+
+  @Patch(":id")
+  @Auth("document.edit")
+  update(@Param("id") id: string, @Body() dto: UpdateDocumentDto, @CurrentUserId() userId: string, @ClientIp() ip?: string) {
+    return this.documents.updateMetadata(id, dto, userId, ip);
+  }
+
+  @Delete(":id")
+  @HttpCode(200)
+  @Auth("document.delete")
+  async remove(@Param("id") id: string, @CurrentUserId() userId: string, @ClientIp() ip?: string) {
+    await this.documents.delete(id, userId, ip);
+    return { ok: true };
   }
 
   @Post(":documentId/versions")

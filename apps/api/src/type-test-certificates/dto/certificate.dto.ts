@@ -23,3 +23,20 @@ export class RenewCertificateDto {
   @IsString()
   certificateNo?: string;
 }
+
+/** Metadata-only correction - no file, no expiry-date reminder-clock
+ * reset. Use "renew" for a new file/expiry (see TypeTestCertificatesService
+ * doc comment on renew()). */
+export class UpdateCertificateDto {
+  @IsOptional()
+  @IsString()
+  transformerType?: string;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  certificateNo?: string;
+}

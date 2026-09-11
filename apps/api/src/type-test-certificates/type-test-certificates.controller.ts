@@ -1,11 +1,24 @@
-import { Body, Controller, Get, Param, Post, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { memoryStorage } from "multer";
 import { Auth } from "../common/auth.decorator";
 import { ClientIp, CurrentUserId } from "../common/current-user.decorator";
 import { InternalTokenGuard } from "../common/internal-token.guard";
-import { CreateCertificateDto, RenewCertificateDto } from "./dto/certificate.dto";
+import { CreateCertificateDto, RenewCertificateDto, UpdateCertificateDto } from "./dto/certificate.dto";
 import { TypeTestCertificatesService } from "./type-test-certificates.service";
 
 @Controller("type-test-certificates")
@@ -34,6 +47,20 @@ export class TypeTestCertificatesController {
     @ClientIp() ip?: string,
   ) {
     return this.certificates.create(dto, file, userId, ip);
+  }
+
+  @Patch(":id")
+  @Auth("certificate.manage")
+  update(@Param("id") id: string, @Body() dto: UpdateCertificateDto, @CurrentUserId() userId: string, @ClientIp() ip?: string) {
+    return this.certificates.update(id, dto, userId, ip);
+  }
+
+  @Delete(":id")
+  @HttpCode(200)
+  @Auth("certificate.manage")
+  async remove(@Param("id") id: string, @CurrentUserId() userId: string, @ClientIp() ip?: string) {
+    await this.certificates.delete(id, userId, ip);
+    return { ok: true };
   }
 
   @Post(":id/renew")

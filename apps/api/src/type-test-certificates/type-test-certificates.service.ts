@@ -7,7 +7,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { computeExpiryStatus, daysUntil, EXPIRY_WARNING_DAYS, isReminderDue } from "./certificate-expiry";
-import { CreateCertificateDto, RenewCertificateDto } from "./dto/certificate.dto";
+import { CreateCertificateDto, RenewCertificateDto, UpdateCertificateDto } from "./dto/certificate.dto";
 
 const ALLOWED_MIME_TYPES = new Set([
   "application/pdf",
@@ -142,6 +142,52 @@ export class TypeTestCertificatesService {
     });
 
     return withExpiryStatus(certificate);
+  }
+
+  /** Metadata-only correction (transformer type, title, certificate no) -
+   * never touches the file or expiry date/reminder clock. Use "renew" for
+   * those. */
+  async update(id: string, dto: UpdateCertificateDto, userId: string, ip?: string) {
+    const before = await this.prisma.typeTestCertificate.findUnique({ where: { id } });
+    if (!before) throw new NotFoundException("Certificate not found");
+
+    const certificate = await this.prisma.typeTestCertificate.update({
+      where: { id },
+      data: {
+        transformerType: dto.transformerType,
+        title: dto.title,
+        certificateNo: dto.certificateNo,
+      },
+      include: certificateInclude,
+    });
+
+    await this.audit.log({
+      userId,
+      action: "TYPE_TEST_CERTIFICATE_UPDATED",
+      objectType: "TypeTestCertificate",
+      objectId: id,
+      oldValue: { transformerType: before.transformerType, title: before.title, certificateNo: before.certificateNo },
+      newValue: dto,
+      ipAddress: ip,
+    });
+
+    return withExpiryStatus(certificate);
+  }
+
+  async delete(id: string, userId: string, ip?: string): Promise<void> {
+    const certificate = await this.prisma.typeTestCertificate.findUnique({ where: { id } });
+    if (!certificate) throw new NotFoundException("Certificate not found");
+
+    await this.audit.log({
+      userId,
+      action: "TYPE_TEST_CERTIFICATE_DELETED",
+      objectType: "TypeTestCertificate",
+      objectId: id,
+      oldValue: { transformerType: certificate.transformerType, title: certificate.title },
+      ipAddress: ip,
+    });
+
+    await this.prisma.typeTestCertificate.delete({ where: { id } });
   }
 
   async prepareDownload(id: string, userId: string, ip?: string) {

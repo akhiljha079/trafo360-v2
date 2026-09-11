@@ -1,6 +1,6 @@
-import { DownloadOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, EditOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, DatePicker, Form, Input, message, Modal, Table, Tag, Typography, Upload } from "antd";
+import { Button, DatePicker, Form, Input, message, Modal, Popconfirm, Table, Tag, Typography, Upload } from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
@@ -38,6 +38,8 @@ export function TypeTestCertificatesPage() {
   const [renewTarget, setRenewTarget] = useState<CertificateRow | null>(null);
   const [renewForm] = Form.useForm();
   const [renewFile, setRenewFile] = useState<File | null>(null);
+  const [editTarget, setEditTarget] = useState<CertificateRow | null>(null);
+  const [editForm] = Form.useForm();
 
   const query = useQuery({
     queryKey: ["type-test-certificates"],
@@ -69,6 +71,30 @@ export function TypeTestCertificatesPage() {
       invalidate();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : "Upload failed");
+    }
+  }
+
+  async function onEdit() {
+    if (!editTarget) return;
+    const values = await editForm.validateFields();
+    try {
+      await api.patch(`/type-test-certificates/${editTarget.id}`, values);
+      message.success("Certificate updated");
+      setEditTarget(null);
+      editForm.resetFields();
+      invalidate();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Update failed");
+    }
+  }
+
+  async function onDelete(cert: CertificateRow) {
+    try {
+      await api.delete(`/type-test-certificates/${cert.id}`);
+      message.success("Certificate deleted");
+      invalidate();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -152,6 +178,35 @@ export function TypeTestCertificatesPage() {
                     Renew
                   </Button>
                 )}
+                {canManage && (
+                  <Button
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => {
+                      setEditTarget(r);
+                      editForm.setFieldsValue({
+                        transformerType: r.transformerType,
+                        title: r.title,
+                        certificateNo: r.certificateNo,
+                      });
+                    }}
+                  >
+                    Edit
+                  </Button>
+                )}
+                {canManage && (
+                  <Popconfirm
+                    title="Delete this certificate?"
+                    description="This removes the record and its file reference permanently."
+                    okText="Delete"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => onDelete(r)}
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />}>
+                      Delete
+                    </Button>
+                  </Popconfirm>
+                )}
               </span>
             ),
           },
@@ -226,6 +281,32 @@ export function TypeTestCertificatesPage() {
             >
               <Button icon={<UploadOutlined />}>Select file</Button>
             </Upload>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Edit Certificate - ${editTarget?.title ?? ""}`}
+        open={!!editTarget}
+        onOk={onEdit}
+        onCancel={() => {
+          setEditTarget(null);
+          editForm.resetFields();
+        }}
+        okText="Save"
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Corrects details only - the file and expiry date aren't changed here, use Renew for that.
+        </Typography.Paragraph>
+        <Form form={editForm} layout="vertical">
+          <Form.Item name="transformerType" label="Transformer Type / Rating" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="title" label="Certificate Title" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="certificateNo" label="Certificate No (optional)">
+            <Input />
           </Form.Item>
         </Form>
       </Modal>

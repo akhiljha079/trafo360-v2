@@ -1,8 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Drawer, Input, message, Space, Tag, Timeline, Typography, Upload } from "antd";
-import { UploadOutlined } from "@ant-design/icons";
+import { Button, Drawer, Form, Input, message, Modal, Popconfirm, Select, Space, Tag, Timeline, Typography, Upload } from "antd";
+import { DeleteOutlined, EditOutlined, UploadOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
+import { useAuth } from "../auth/useAuth";
 
 interface Approval {
   id: string;
@@ -26,7 +27,17 @@ interface DocumentDetail {
   id: string;
   title: string;
   status: string;
+  documentTypeId: string;
+  confidentialityLevelId: string;
   versions: Version[];
+}
+interface DocumentType {
+  id: string;
+  name: string;
+}
+interface ConfidentialityLevel {
+  id: string;
+  name: string;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -47,16 +58,54 @@ export function DocumentDetailDrawer({
 }) {
   const qc = useQueryClient();
   const [comment, setComment] = useState<Record<string, string>>({});
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm] = Form.useForm();
+  const canEdit = useAuth((s) => s.hasPermission("document.edit"));
+  const canDelete = useAuth((s) => s.hasPermission("document.delete"));
 
   const query = useQuery({
     queryKey: ["document", documentId],
     queryFn: () => api.get<DocumentDetail>(`/documents/${documentId}`),
     enabled: !!documentId,
   });
+  const documentTypesQuery = useQuery({
+    queryKey: ["document-types"],
+    queryFn: () => api.get<DocumentType[]>("/document-types"),
+    enabled: editOpen,
+  });
+  const confidentialityQuery = useQuery({
+    queryKey: ["confidentiality-levels"],
+    queryFn: () => api.get<ConfidentialityLevel[]>("/confidentiality-levels"),
+    enabled: editOpen,
+  });
 
   function invalidate() {
     qc.invalidateQueries({ queryKey: ["document", documentId] });
     qc.invalidateQueries({ queryKey: ["project-workflow"] });
+    qc.invalidateQueries({ queryKey: ["document-library"] });
+  }
+
+  async function onEdit() {
+    const values = await editForm.validateFields();
+    try {
+      await api.patch(`/documents/${documentId}`, values);
+      message.success("Document updated");
+      setEditOpen(false);
+      invalidate();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Update failed");
+    }
+  }
+
+  async function onDelete() {
+    try {
+      await api.delete(`/documents/${documentId}`);
+      message.success("Document deleted");
+      invalidate();
+      onClose();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Delete failed");
+    }
   }
 
   async function decide(approvalId: string, action: "approve" | "reject") {
@@ -90,11 +139,39 @@ export function DocumentDetailDrawer({
             {query.data.status.replace(/_/g, " ")}
           </Tag>
 
-          <Upload beforeUpload={uploadNewVersion} showUploadList={false}>
-            <Button icon={<UploadOutlined />} style={{ marginBottom: 16 }}>
-              Upload new version
-            </Button>
-          </Upload>
+          <Space style={{ marginBottom: 16 }} wrap>
+            <Upload beforeUpload={uploadNewVersion} showUploadList={false}>
+              <Button icon={<UploadOutlined />}>Upload new version</Button>
+            </Upload>
+            {canEdit && (
+              <Button
+                icon={<EditOutlined />}
+                onClick={() => {
+                  editForm.setFieldsValue({
+                    title: query.data!.title,
+                    documentTypeId: query.data!.documentTypeId,
+                    confidentialityLevelId: query.data!.confidentialityLevelId,
+                  });
+                  setEditOpen(true);
+                }}
+              >
+                Edit
+              </Button>
+            )}
+            {canDelete && (
+              <Popconfirm
+                title="Delete this document?"
+                description="This permanently removes every version and its approval history."
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+                onConfirm={onDelete}
+              >
+                <Button danger icon={<DeleteOutlined />}>
+                  Delete
+                </Button>
+              </Popconfirm>
+            )}
+          </Space>
 
           <Timeline
             items={query.data.versions.map((v) => ({
@@ -147,6 +224,30 @@ export function DocumentDetailDrawer({
           />
         </>
       )}
+
+      <Modal
+        title="Edit Document"
+        open={editOpen}
+        onOk={onEdit}
+        onCancel={() => setEditOpen(false)}
+        okText="Save"
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Corrects the title/type/confidentiality level only - upload a new version for a corrected
+          file.
+        </Typography.Paragraph>
+        <Form form={editForm} layout="vertical">
+          <Form.Item name="title" label="Title" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="documentTypeId" label="Document Type">
+            <Select options={documentTypesQuery.data?.map((t) => ({ value: t.id, label: t.name }))} />
+          </Form.Item>
+          <Form.Item name="confidentialityLevelId" label="Confidentiality Level">
+            <Select options={confidentialityQuery.data?.map((c) => ({ value: c.id, label: c.name }))} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Drawer>
   );
 }

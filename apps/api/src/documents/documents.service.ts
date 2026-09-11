@@ -10,6 +10,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { WorkflowService } from "../workflow/workflow.service";
 import { DecideApprovalDto } from "./dto/decide-approval.dto";
+import { UpdateDocumentDto } from "./dto/update-document.dto";
 import { UploadDocumentDto } from "./dto/upload-document.dto";
 
 // Deliberately conservative whitelist (spec §19/§48) - extend as real
@@ -108,6 +109,72 @@ export class DocumentsService {
       throw new ForbiddenException("This document's confidentiality level exceeds your access");
     }
     return document;
+  }
+
+  /** Metadata-only edit (title/type/confidentiality) - never touches the
+   * version history or file content, which stays immutable per the
+   * architecture plan. Uploading a corrected file is a new version
+   * (uploadVersionForExistingDocument), not an edit. */
+  async updateMetadata(id: string, dto: UpdateDocumentDto, userId: string, ip?: string) {
+    const before = await this.prisma.document.findUnique({ where: { id } });
+    if (!before) throw new NotFoundException("Document not found");
+
+    if (dto.documentTypeId) {
+      const documentType = await this.prisma.documentType.findUnique({ where: { id: dto.documentTypeId } });
+      if (!documentType) throw new NotFoundException("Document type not found");
+    }
+    if (dto.confidentialityLevelId) {
+      const level = await this.prisma.confidentialityLevel.findUnique({ where: { id: dto.confidentialityLevelId } });
+      if (!level) throw new NotFoundException("Confidentiality level not found");
+    }
+
+    await this.prisma.document.update({
+      where: { id },
+      data: {
+        title: dto.title,
+        documentTypeId: dto.documentTypeId,
+        confidentialityLevelId: dto.confidentialityLevelId,
+      },
+    });
+
+    await this.audit.log({
+      userId,
+      action: "DOCUMENT_UPDATED",
+      objectType: "Document",
+      objectId: id,
+      oldValue: { title: before.title, documentTypeId: before.documentTypeId, confidentialityLevelId: before.confidentialityLevelId },
+      newValue: dto,
+      ipAddress: ip,
+    });
+
+    return this.get(id, userId);
+  }
+
+  /** Hard delete - cascades to every version/approval (schema-level
+   * onDelete: Cascade). The audit log entry is written first and doesn't
+   * FK to Document, so the record of who deleted what survives the
+   * document itself (insert-only audit trail, per architecture plan §10). */
+  async delete(id: string, userId: string, ip?: string): Promise<void> {
+    const document = await this.prisma.document.findUnique({ where: { id } });
+    if (!document) throw new NotFoundException("Document not found");
+
+    await this.audit.log({
+      userId,
+      action: "DOCUMENT_DELETED",
+      objectType: "Document",
+      objectId: id,
+      oldValue: { title: document.title, projectId: document.projectId },
+      ipAddress: ip,
+    });
+
+    await this.prisma.document.delete({ where: { id } });
+
+    if (document.projectDocumentRequirementId) {
+      const pdr = await this.prisma.projectDocumentRequirement.findUnique({
+        where: { id: document.projectDocumentRequirementId },
+      });
+      if (pdr) await this.workflow.recomputeProjectStageStatus(pdr.projectStageId, userId, "Document deleted");
+    }
   }
 
   async upload(projectId: string, dto: UploadDocumentDto, file: Express.Multer.File, userId: string, ip?: string) {
