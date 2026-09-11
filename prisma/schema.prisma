@@ -1,0 +1,785 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity & Access
+// ---------------------------------------------------------------------------
+
+enum UserSource {
+  LOCAL
+  AD
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum OverrideEffect {
+  GRANT
+  REVOKE
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  active    Boolean  @default(true)
+  headId    String?
+  head      User?    @relation("DepartmentHead", fields: [headId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users            User[]                     @relation("UserDepartment")
+  projects         Project[]
+  stages           Stage[]                    @relation("StageResponsibleDepartment")
+  approvalSteps    ApprovalStep[]              @relation("ApprovalStepDepartment")
+  documentRequests DocumentRequest[]
+  fileIssues       FileIssueTransaction[]
+}
+
+model Role {
+  id                        String   @id @default(cuid())
+  name                      String   @unique
+  description               String?
+  isSystem                  Boolean  @default(false)
+  maxConfidentialityLevelId String?
+  maxConfidentialityLevel   ConfidentialityLevel? @relation(fields: [maxConfidentialityLevelId], references: [id])
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  users               User[]
+  permissions         RolePermission[]
+  adGroupMappings     AdGroupRoleMapping[]
+  responsibleStages   Stage[]                @relation("StageResponsibleRole")
+  approvalSteps       ApprovalStep[]         @relation("ApprovalStepRole")
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  category    String
+  description String?
+
+  roles     RolePermission[]
+  overrides UserPermissionOverride[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model UserPermissionOverride {
+  id           String         @id @default(cuid())
+  userId       String
+  permissionId String
+  effect       OverrideEffect
+  reason       String?
+  createdAt    DateTime       @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+}
+
+model AdGroup {
+  id   String @id @default(cuid())
+  dn   String @unique
+  name String
+
+  mappings AdGroupRoleMapping[]
+}
+
+model AdGroupRoleMapping {
+  id        String @id @default(cuid())
+  adGroupId String
+  roleId    String
+
+  adGroup AdGroup @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([adGroupId, roleId])
+}
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  employeeId   String?
+  name         String
+  email        String     @unique
+  mobile       String?
+  designation  String?
+  source       UserSource @default(LOCAL)
+  passwordHash String?
+  status       UserStatus @default(ACTIVE)
+  departmentId String?
+  department   Department? @relation("UserDepartment", fields: [departmentId], references: [id])
+  roleId       String?
+  role         Role?      @relation(fields: [roleId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  permissionOverrides   UserPermissionOverride[]
+  loginHistory          LoginHistory[]
+  auditLogs             AuditLog[]                @relation("AuditActor")
+  headOfDepartments      Department[]              @relation("DepartmentHead")
+  projectMemberships    ProjectMember[]
+  managedProjects        Project[]                 @relation("ProjectManager")
+  coordinatedProjects   Project[]                 @relation("ProjectDocCoordinator")
+  overriddenRequirements ProjectDocumentRequirement[] @relation("RequirementOverriddenBy")
+  documentsCreated      Document[]                @relation("DocumentCreatedBy")
+  uploadedVersions      DocumentVersion[]         @relation("VersionUploadedBy")
+  documentApprovals     DocumentApproval[]        @relation("DocumentApprover")
+  documentRequests      DocumentRequest[]         @relation("DocumentRequester")
+  requestApprovals      RequestApproval[]         @relation("RequestApprover")
+  fileRequests          FileIssueTransaction[]    @relation("FileRequester")
+  fileIssuances         FileIssueTransaction[]    @relation("FileIssuedBy")
+  fileApprovals         FileIssueTransaction[]    @relation("FileApprovedBy")
+  notifications         Notification[]
+  uploadedCertificates  TypeTestCertificate[]     @relation("CertificateUploadedBy")
+
+  @@index([departmentId])
+  @@index([roleId])
+}
+
+model LoginHistory {
+  id            String   @id @default(cuid())
+  userId        String
+  success       Boolean
+  ipAddress     String?
+  userAgent     String?
+  failureReason String?
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  objectType String
+  objectId   String?
+  oldValue   Json?
+  newValue   Json?
+  reason     String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation("AuditActor", fields: [userId], references: [id])
+
+  @@index([objectType, objectId])
+  @@index([createdAt])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Confidentiality & Org data
+// ---------------------------------------------------------------------------
+
+model ConfidentialityLevel {
+  id                                String  @id @default(cuid())
+  code                              String  @unique
+  name                              String
+  rank                              Int     @unique
+  requiresApprovalForDownload       Boolean @default(false)
+  requiresApprovalForPhysicalIssue  Boolean @default(false)
+
+  roles         Role[]
+  projects      Project[]
+  documents     Document[]
+  documentTypes DocumentType[]
+  physicalFiles PhysicalFile[]
+}
+
+model Customer {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  address       String?
+  contactPerson String?
+  email         String?
+  phone         String?
+  country       String?
+  taxId         String?
+  customerType  String?
+  active        Boolean  @default(true)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  projects Project[]
+}
+
+model Project {
+  id                      String    @id @default(cuid())
+  projectNo               String    @unique
+  customerId              String
+  customerPo              String?
+  poDate                  DateTime?
+  name                    String
+  transformerSerial       String?
+  transformerType         String?
+  rating                  String?
+  voltage                 String?
+  quantity                Int       @default(1)
+  location                String?
+  startDate               DateTime?
+  targetDeliveryDate      DateTime?
+  actualDispatchDate      DateTime?
+  projectManagerId        String?
+  documentCoordinatorId   String?
+  departmentId            String?
+  confidentialityLevelId  String
+  status                  String    @default("DRAFT")
+  statusOverriddenById    String?
+  statusOverrideReason    String?
+  workflowTemplateId      String?
+  remarks                 String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  customer             Customer              @relation(fields: [customerId], references: [id])
+  projectManager       User?                 @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  documentCoordinator  User?                 @relation("ProjectDocCoordinator", fields: [documentCoordinatorId], references: [id])
+  department           Department?           @relation(fields: [departmentId], references: [id])
+  confidentialityLevel ConfidentialityLevel  @relation(fields: [confidentialityLevelId], references: [id])
+  workflowTemplate     WorkflowTemplate?     @relation(fields: [workflowTemplateId], references: [id])
+
+  members       ProjectMember[]
+  stages        ProjectStage[]
+  physicalFile  PhysicalFile?
+  documents     Document[]
+  documentRequests DocumentRequest[]
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model ProjectMember {
+  id            String  @id @default(cuid())
+  projectId     String
+  userId        String
+  roleInProject String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([projectId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// Workflow Engine
+// ---------------------------------------------------------------------------
+
+model WorkflowTemplate {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  description   String?
+  active        Boolean  @default(true)
+  clonedFromId  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  clonedFrom   WorkflowTemplate?  @relation("TemplateClone", fields: [clonedFromId], references: [id])
+  clones       WorkflowTemplate[] @relation("TemplateClone")
+  parentStages ParentStage[]
+  projects     Project[]
+}
+
+model ParentStage {
+  id                 String @id @default(cuid())
+  workflowTemplateId String
+  code               String
+  name               String
+  sortOrder          Int
+
+  workflowTemplate WorkflowTemplate @relation(fields: [workflowTemplateId], references: [id], onDelete: Cascade)
+  stages           Stage[]
+
+  @@unique([workflowTemplateId, code])
+}
+
+model Stage {
+  id                        String  @id @default(cuid())
+  parentStageId             String
+  code                      String
+  name                      String
+  description               String?
+  sortOrder                 Int
+  responsibleDepartmentId   String?
+  responsibleRoleId         String?
+  slaHours                  Int?
+
+  parentStage           ParentStage    @relation(fields: [parentStageId], references: [id], onDelete: Cascade)
+  responsibleDepartment  Department?    @relation("StageResponsibleDepartment", fields: [responsibleDepartmentId], references: [id])
+  responsibleRole        Role?          @relation("StageResponsibleRole", fields: [responsibleRoleId], references: [id])
+
+  dependsOn            StageDependency[]           @relation("StageDependent")
+  dependents           StageDependency[]           @relation("StageDependsOn")
+  documentRequirements StageDocumentRequirement[]
+  projectStages        ProjectStage[]
+
+  @@unique([parentStageId, code])
+}
+
+model StageDependency {
+  id               String @id @default(cuid())
+  stageId          String
+  dependsOnStageId String
+
+  stage          Stage @relation("StageDependent", fields: [stageId], references: [id], onDelete: Cascade)
+  dependsOnStage Stage @relation("StageDependsOn", fields: [dependsOnStageId], references: [id], onDelete: Cascade)
+
+  @@unique([stageId, dependsOnStageId])
+}
+
+model DocumentType {
+  id                     String   @id @default(cuid())
+  code                   String   @unique
+  name                   String
+  description            String?
+  confidentialityLevelId String?
+  multipleFilesAllowed   Boolean  @default(true)
+  versionControlled      Boolean  @default(true)
+  expiryRequired         Boolean  @default(false)
+  retentionYears         Int?
+  fileNamingRule         String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  confidentialityLevel ConfidentialityLevel?       @relation(fields: [confidentialityLevelId], references: [id])
+  requirements         StageDocumentRequirement[]
+  documents            Document[]
+}
+
+model StageDocumentRequirement {
+  id                  String  @id @default(cuid())
+  stageId             String
+  documentTypeId      String
+  mandatory           Boolean @default(true)
+  approvalRequired    Boolean @default(false)
+  approvalWorkflowId  String?
+  slaHours            Int?
+
+  stage            Stage              @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  documentType     DocumentType       @relation(fields: [documentTypeId], references: [id])
+  approvalWorkflow ApprovalWorkflow?  @relation(fields: [approvalWorkflowId], references: [id])
+
+  projectRequirements ProjectDocumentRequirement[]
+
+  @@unique([stageId, documentTypeId])
+}
+
+model ProjectStage {
+  id          String    @id @default(cuid())
+  projectId   String
+  stageId     String
+  status      String    @default("INCOMPLETE")
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stage   Stage   @relation(fields: [stageId], references: [id])
+
+  documentRequirements ProjectDocumentRequirement[]
+  history              ProjectStageHistory[]
+
+  @@unique([projectId, stageId])
+}
+
+model ProjectStageHistory {
+  id             String   @id @default(cuid())
+  projectStageId String
+  previousStatus String
+  newStatus      String
+  userId         String?
+  comment        String?
+  createdAt      DateTime @default(now())
+
+  projectStage ProjectStage @relation(fields: [projectStageId], references: [id], onDelete: Cascade)
+}
+
+model ProjectDocumentRequirement {
+  id                          String  @id @default(cuid())
+  projectStageId              String
+  stageDocumentRequirementId  String
+  required                    Boolean @default(true)
+  notApplicable               Boolean @default(false)
+  overrideReason              String?
+  overriddenById              String?
+
+  projectStage              ProjectStage              @relation(fields: [projectStageId], references: [id], onDelete: Cascade)
+  stageDocumentRequirement  StageDocumentRequirement  @relation(fields: [stageDocumentRequirementId], references: [id])
+  overriddenBy              User?                     @relation("RequirementOverriddenBy", fields: [overriddenById], references: [id])
+
+  documents Document[]
+
+  @@unique([projectStageId, stageDocumentRequirementId])
+}
+
+// ---------------------------------------------------------------------------
+// Documents
+// ---------------------------------------------------------------------------
+
+model Document {
+  id                            String   @id @default(cuid())
+  projectId                     String
+  projectDocumentRequirementId  String?
+  documentTypeId                String
+  confidentialityLevelId        String
+  title                         String
+  status                        String   @default("DRAFT")
+  currentVersionId              String?  @unique
+  createdById                   String
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  project                     Project                     @relation(fields: [projectId], references: [id])
+  projectDocumentRequirement  ProjectDocumentRequirement? @relation(fields: [projectDocumentRequirementId], references: [id])
+  documentType                DocumentType                @relation(fields: [documentTypeId], references: [id])
+  confidentialityLevel        ConfidentialityLevel        @relation(fields: [confidentialityLevelId], references: [id])
+  createdBy                   User                        @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+  currentVersion               DocumentVersion?            @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+
+  versions         DocumentVersion[] @relation("DocumentVersions")
+  documentRequests DocumentRequest[]
+
+  @@index([projectId])
+  @@index([documentTypeId])
+}
+
+model DocumentVersion {
+  id             String   @id @default(cuid())
+  documentId     String
+  versionNo      Int
+  fileName       String
+  storagePath    String
+  storageStatus  String   @default("NFS_STORED")
+  checksum       String
+  sizeBytes      BigInt
+  mimeType       String
+  status         String   @default("UPLOADED")
+  revisionReason String?
+  uploadedById   String
+  createdAt      DateTime @default(now())
+
+  document   Document @relation("DocumentVersions", fields: [documentId], references: [id], onDelete: Cascade)
+  uploadedBy User     @relation("VersionUploadedBy", fields: [uploadedById], references: [id])
+
+  approvals  DocumentApproval[]
+  currentFor Document?          @relation("CurrentVersion")
+  syncJobs   StorageSyncJob[]
+
+  @@unique([documentId, versionNo])
+  @@index([storageStatus])
+}
+
+model ApprovalWorkflow {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+
+  steps                      ApprovalStep[]
+  stageDocumentRequirements  StageDocumentRequirement[]
+}
+
+model ApprovalStep {
+  id                   String @id @default(cuid())
+  approvalWorkflowId   String
+  sortOrder            Int
+  approverRoleId       String?
+  approverDepartmentId String?
+
+  approvalWorkflow  ApprovalWorkflow @relation(fields: [approvalWorkflowId], references: [id], onDelete: Cascade)
+  approverRole       Role?            @relation("ApprovalStepRole", fields: [approverRoleId], references: [id])
+  approverDepartment Department?      @relation("ApprovalStepDepartment", fields: [approverDepartmentId], references: [id])
+
+  documentApprovals DocumentApproval[]
+}
+
+model DocumentApproval {
+  id                 String    @id @default(cuid())
+  documentVersionId  String
+  approvalStepId     String
+  approverId         String?
+  decision           String    @default("PENDING")
+  comment            String?
+  decidedAt          DateTime?
+  createdAt          DateTime  @default(now())
+
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  approvalStep    ApprovalStep    @relation(fields: [approvalStepId], references: [id])
+  approver        User?           @relation("DocumentApprover", fields: [approverId], references: [id])
+}
+
+model DocumentRequest {
+  id             String    @id @default(cuid())
+  requesterId    String
+  departmentId   String?
+  projectId      String?
+  documentId     String?
+  physicalFileId String?
+  reason         String
+  purpose        String?
+  requiredFrom   DateTime?
+  requiredUntil  DateTime?
+  mode           String
+  status         String    @default("REQUESTED")
+  createdAt      DateTime  @default(now())
+
+  requester    User          @relation("DocumentRequester", fields: [requesterId], references: [id])
+  department   Department?   @relation(fields: [departmentId], references: [id])
+  project      Project?      @relation(fields: [projectId], references: [id])
+  physicalFile PhysicalFile? @relation(fields: [physicalFileId], references: [id])
+  document     Document?     @relation(fields: [documentId], references: [id])
+
+  approvals RequestApproval[]
+}
+
+model RequestApproval {
+  id                String    @id @default(cuid())
+  documentRequestId String
+  sortOrder         Int
+  approverId        String?
+  decision          String?
+  comment           String?
+  decidedAt         DateTime?
+
+  documentRequest DocumentRequest @relation(fields: [documentRequestId], references: [id], onDelete: Cascade)
+  approver        User?           @relation("RequestApprover", fields: [approverId], references: [id])
+}
+
+// ---------------------------------------------------------------------------
+// Physical Files
+// ---------------------------------------------------------------------------
+
+model PhysicalFile {
+  id                      String   @id @default(cuid())
+  fileCode                String   @unique
+  projectId               String   @unique
+  confidentialityLevelId  String
+  qrToken                 String   @unique
+  building                String?
+  floor                   String?
+  room                    String?
+  rack                    String?
+  shelf                   String?
+  box                     String?
+  archiveLocation         String?
+  status                  String   @default("AVAILABLE")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  project              Project              @relation(fields: [projectId], references: [id])
+  confidentialityLevel ConfidentialityLevel @relation(fields: [confidentialityLevelId], references: [id])
+
+  issues           FileIssueTransaction[]
+  documentRequests DocumentRequest[]
+}
+
+model FileIssueTransaction {
+  id             String    @id @default(cuid())
+  physicalFileId String
+  requesterId    String
+  issuedById     String?
+  approvedById   String?
+  purpose        String?
+  departmentId   String?
+  issueDate      DateTime?
+  dueDate        DateTime?
+  status         String    @default("REQUESTED")
+  createdAt      DateTime  @default(now())
+
+  physicalFile PhysicalFile @relation(fields: [physicalFileId], references: [id])
+  requester    User         @relation("FileRequester", fields: [requesterId], references: [id])
+  issuedBy     User?        @relation("FileIssuedBy", fields: [issuedById], references: [id])
+  approvedBy   User?        @relation("FileApprovedBy", fields: [approvedById], references: [id])
+  department   Department?  @relation(fields: [departmentId], references: [id])
+
+  extensions        ExtensionRequest[]
+  returnTransaction FileReturnTransaction?
+}
+
+model ExtensionRequest {
+  id                      String    @id @default(cuid())
+  fileIssueTransactionId  String
+  requestedDueDate        DateTime
+  reason                  String?
+  status                  String    @default("REQUESTED")
+  decidedById             String?
+  decidedAt               DateTime?
+  createdAt               DateTime  @default(now())
+
+  fileIssueTransaction FileIssueTransaction @relation(fields: [fileIssueTransactionId], references: [id], onDelete: Cascade)
+}
+
+model FileReturnTransaction {
+  id                      String   @id @default(cuid())
+  fileIssueTransactionId  String   @unique
+  returnedById            String?
+  receivedById            String?
+  condition               String?
+  remarks                 String?
+  createdAt               DateTime @default(now())
+
+  fileIssueTransaction FileIssueTransaction @relation(fields: [fileIssueTransactionId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+model NotificationTemplate {
+  id       String  @id @default(cuid())
+  eventKey String
+  channel  String
+  subject  String?
+  body     String
+  active   Boolean @default(true)
+
+  @@unique([eventKey, channel])
+}
+
+model NotificationRule {
+  id              String  @id @default(cuid())
+  eventKey        String  @unique
+  emailEnabled    Boolean @default(true)
+  whatsappEnabled Boolean @default(false)
+  inAppEnabled    Boolean @default(true)
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  eventKey  String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  toAddress String
+  subject   String
+  status    String
+  error     String?
+  eventKey  String?
+  createdAt DateTime @default(now())
+}
+
+model WhatsappLog {
+  id        String   @id @default(cuid())
+  toNumber  String
+  message   String
+  status    String
+  error     String?
+  eventKey  String?
+  createdAt DateTime @default(now())
+}
+
+model WhatsappSession {
+  id            String    @id @default(cuid())
+  status        String    @default("DISCONNECTED")
+  connectedAt   DateTime?
+  lastSeenAt    DateTime?
+  updatedAt     DateTime  @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Storage
+// ---------------------------------------------------------------------------
+
+model StorageHealthSnapshot {
+  id                    String    @id @default(cuid())
+  nfsOnline             Boolean
+  totalDocuments        Int
+  nfsDocuments          Int
+  localPendingDocuments Int
+  syncFailedDocuments   Int
+  storageUsedBytes      BigInt
+  lastSuccessfulSyncAt  DateTime?
+  lastFailedSyncAt      DateTime?
+  createdAt             DateTime  @default(now())
+}
+
+model StorageSyncJob {
+  id                String   @id @default(cuid())
+  documentVersionId String
+  attempt           Int      @default(0)
+  status            String
+  error             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// System
+// ---------------------------------------------------------------------------
+
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String?
+  isSecret  Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+model QrLabelTemplate {
+  id     String  @id @default(cuid())
+  name   String  @unique
+  layout Json
+  active Boolean @default(true)
+}
+
+// ---------------------------------------------------------------------------
+// Type Test Certificates - standalone registry (not tied to a project): one
+// certificate per transformer type/rating, reused across whichever projects
+// build that type. Renewal replaces the file and expiry date on the same
+// row rather than versioning - see docs/BUILD_PROGRESS.md for why.
+// ---------------------------------------------------------------------------
+
+model TypeTestCertificate {
+  id                 String    @id @default(cuid())
+  transformerType    String
+  title              String
+  certificateNo      String?
+  fileName           String
+  storagePath        String
+  storageStatus      String    @default("NFS_STORED")
+  checksum           String
+  sizeBytes          BigInt
+  mimeType           String
+  expiryDate         DateTime
+  lastReminderSentAt DateTime?
+  uploadedById       String
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  uploadedBy User @relation("CertificateUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([expiryDate])
+}

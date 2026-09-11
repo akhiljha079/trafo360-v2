@@ -1,47 +1,39 @@
 {
-  "name": "trafo-360",
-  "version": "1.0.0",
-  "description": "TRAFO 360 - Trafo Power & Electricals Pvt Ltd Sales-Manufacturing-Dispatch Workflow & Document Issue Management System. Built by Vayrone Infratech.",
-  "main": "server.js",
+  "name": "trafo360-v2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TRAFO 360 v2 - Manufacturing Project Workflow & Document Management System",
+  "workspaces": [
+    "apps/api",
+    "apps/worker",
+    "apps/web",
+    "libs/shared"
+  ],
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "seed": "node scripts/seed.js",
-    "create-admin": "node scripts/createAdmin.js"
-  },
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "connect-flash": "^0.1.1",
-    "cookie-parser": "^1.4.6",
-    "csrf-csrf": "^4.0.3",
-    "dotenv": "^16.4.5",
-    "ejs": "^3.1.10",
-    "express": "^4.19.2",
-    "express-async-errors": "^3.1.1",
-    "express-ejs-layouts": "^2.5.1",
-    "express-mysql-session": "^3.0.3",
-    "express-rate-limit": "^8.7.0",
-    "express-session": "^1.18.0",
-    "express-validator": "^7.3.2",
-    "helmet": "^8.3.0",
-    "method-override": "^3.0.0",
-    "multer": "^2.0.0",
-    "mysql2": "^3.10.0",
-    "node-cron": "^3.0.3",
-    "nodemailer": "^9.1.1",
-    "pino": "^10.3.1",
-    "pino-http": "^11.0.0",
-    "puppeteer": "^24.38.0",
-    "qrcode": "^1.5.3",
-    "tesseract.js": "^5.1.1",
-    "whatsapp-web.js": "^1.26.0"
+    "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema=prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:studio": "prisma studio --schema=prisma/schema.prisma",
+    "dev:api": "npm run start:dev --workspace=apps/api",
+    "dev:worker": "npm run start:dev --workspace=apps/worker",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=libs/shared && npm run build --workspace=apps/api && npm run build --workspace=apps/worker && npm run build --workspace=apps/web",
+    "test": "npm run test --workspace=apps/api && npm run test --workspace=libs/shared",
+    "typecheck": "npm run typecheck --workspace=apps/api && npm run typecheck --workspace=apps/worker && npm run typecheck --workspace=apps/web && npm run typecheck --workspace=libs/shared"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "@types/bcryptjs": "^2.4.6",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "prisma": "^5.19.1",
+    "tsx": "^4.19.1",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.19.1",
+    "bcryptjs": "^3.0.3"
   },
   "engines": {
-    "node": ">=16.0.0"
-  },
-  "author": "Vayrone Infratech",
-  "license": "Proprietary"
+    "node": ">=20"
+  }
 }
