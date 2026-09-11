@@ -26,6 +26,14 @@ export class WhatsappService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private client: any = null;
   private lastQrDataUrl: string | null = null;
+  // Guards against a second connect() spawning a competing Chromium
+  // instance against the same WHATSAPP_SESSION_PATH while the first is
+  // still launching (e.g. an impatient repeat click during the ~60s a
+  // first-ever launch can take). The second Client() would orphan the
+  // first mid-launch without destroying it, leaving it running forever
+  // and holding a lock that fails every future attempt with "the browser
+  // is already running for <path>" - reproduced live on VM2.
+  private connectPromise: Promise<{ qrDataUrl: string | null; status: string }> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -48,6 +56,16 @@ export class WhatsappService {
    * WHATSAPP_SESSION_PATH via LocalAuth - filesystem-permission restricted,
    * never returned by any API response (only connection *status* is). */
   async connect(): Promise<{ qrDataUrl: string | null; status: string }> {
+    if (this.connectPromise) return this.connectPromise;
+    this.connectPromise = this.doConnect();
+    try {
+      return await this.connectPromise;
+    } finally {
+      this.connectPromise = null;
+    }
+  }
+
+  private async doConnect(): Promise<{ qrDataUrl: string | null; status: string }> {
     const session = await this.getSessionRow();
     if (session.status === "CONNECTED") return { qrDataUrl: null, status: "CONNECTED" };
 
