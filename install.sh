@@ -79,13 +79,42 @@ fi
 
 log "Installing for domain: $BOLD$DOMAIN$RESET (web-facing setup happens in aaPanel afterward - see the final summary)"
 
-# Generated secrets - shown once at the end, nowhere else
-DB_PASSWORD="$(openssl rand -hex 24)"
-ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 20)"
-JWT_ACCESS_SECRET="$(openssl rand -hex 32)"
-JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
-SECRETS_ENCRYPTION_KEY="$(openssl rand -hex 32)"
-INTERNAL_WORKER_TOKEN="$(openssl rand -hex 32)"
+# Generated secrets - shown once at the end, nowhere else.
+#
+# Reused from an existing .env on re-run, not regenerated - the seed script
+# only ever sets the bootstrap admin's password when it first creates that
+# user (never on a later upsert, so it doesn't clobber a password the admin
+# has since changed from the UI). If this script generated a *new* random
+# ADMIN_PASSWORD on every run, a second run would print a password that was
+# never actually written to the database - which is exactly what happened
+# on the first real re-run against a live server. Same reasoning applies to
+# DB_PASSWORD (must keep matching the already-created Postgres role) and the
+# JWT/encryption secrets (rotating them on every run would silently log out
+# every session and break any data already encrypted with the old key).
+EXISTING_ENV="$APP_DIR/.env"
+env_value() {
+  local key="$1"
+  [[ -f "$EXISTING_ENV" ]] || return 0
+  sed -nE "s/^${key}=\"?([^\"]*)\"?\$/\1/p" "$EXISTING_ENV" | head -1
+}
+
+DB_PASSWORD="$([[ -f "$EXISTING_ENV" ]] && sed -nE 's#^DATABASE_URL="postgresql://[^:]+:([^@]+)@.*#\1#p' "$EXISTING_ENV" | head -1 || true)"
+[[ -n "$DB_PASSWORD" ]] || DB_PASSWORD="$(openssl rand -hex 24)"
+
+ADMIN_PASSWORD="$(env_value BOOTSTRAP_ADMIN_PASSWORD)"
+[[ -n "$ADMIN_PASSWORD" ]] || ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 20)"
+
+JWT_ACCESS_SECRET="$(env_value JWT_ACCESS_SECRET)"
+[[ -n "$JWT_ACCESS_SECRET" ]] || JWT_ACCESS_SECRET="$(openssl rand -hex 32)"
+
+JWT_REFRESH_SECRET="$(env_value JWT_REFRESH_SECRET)"
+[[ -n "$JWT_REFRESH_SECRET" ]] || JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
+
+SECRETS_ENCRYPTION_KEY="$(env_value SECRETS_ENCRYPTION_KEY)"
+[[ -n "$SECRETS_ENCRYPTION_KEY" ]] || SECRETS_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+
+INTERNAL_WORKER_TOKEN="$(env_value INTERNAL_WORKER_TOKEN)"
+[[ -n "$INTERNAL_WORKER_TOKEN" ]] || INTERNAL_WORKER_TOKEN="$(openssl rand -hex 32)"
 
 # ---------------------------------------------------------------------------
 # 1. System packages, Node.js, PM2, and Chromium's runtime dependencies
