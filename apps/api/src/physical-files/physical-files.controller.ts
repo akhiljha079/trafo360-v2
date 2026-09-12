@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from "@nestjs/common";
 import { Auth } from "../common/auth.decorator";
 import { ClientIp, CurrentUserId } from "../common/current-user.decorator";
 import { UpsertPhysicalFileLocationDto } from "./dto/physical-file.dto";
@@ -42,6 +42,14 @@ export class PhysicalFilesController {
   @Auth("physical_file.create")
   create(@Param("projectId") projectId: string, @CurrentUserId() userId: string, @ClientIp() ip?: string) {
     return this.physicalFiles.createForProject(projectId, userId, ip);
+  }
+
+  @Delete(":id")
+  @HttpCode(200)
+  @Auth("physical_file.create")
+  async remove(@Param("id") id: string, @CurrentUserId() userId: string, @ClientIp() ip?: string) {
+    await this.physicalFiles.delete(id, userId, ip);
+    return { ok: true };
   }
 
   @Patch(":id/location")

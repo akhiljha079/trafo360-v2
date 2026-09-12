@@ -140,6 +140,43 @@ export class PhysicalFilesService {
     return physicalFile;
   }
 
+  /** Same FK-safety-net pattern as project/customer/document deletion:
+   * FileIssueTransaction/ExtensionRequest reference physicalFileId without
+   * ON DELETE CASCADE (deliberately), so a file with any real issue/return
+   * history refuses to delete rather than silently erasing that audit
+   * trail. A freshly-created record nobody has ever checked out (the
+   * common "created this by mistake" case) has no such rows and deletes
+   * cleanly. Blocking on ISSUED specifically (rather than relying only on
+   * the FK) gives a clearer, more specific error for that particular
+   * case. */
+  async delete(id: string, actorUserId: string, ip?: string): Promise<void> {
+    const physicalFile = await this.prisma.physicalFile.findUnique({ where: { id } });
+    if (!physicalFile) throw new NotFoundException("Physical file not found");
+    if (physicalFile.status === "ISSUED") {
+      throw new ConflictException("This file is currently issued - it must be returned before it can be deleted.");
+    }
+
+    try {
+      await this.prisma.physicalFile.delete({ where: { id } });
+    } catch (err) {
+      if ((err as { code?: string }).code === "P2003" || (err as { code?: string }).code === "P2014") {
+        throw new ConflictException(
+          "This physical file has issue/return history tied to it and cannot be deleted.",
+        );
+      }
+      throw err;
+    }
+
+    await this.audit.log({
+      userId: actorUserId,
+      action: "PHYSICAL_FILE_DELETED",
+      objectType: "PhysicalFile",
+      objectId: id,
+      oldValue: { fileCode: physicalFile.fileCode, projectId: physicalFile.projectId },
+      ipAddress: ip,
+    });
+  }
+
   /** PNG data URL of a QR encoding only an opaque resolver URL - scanning it
    * opens the project file page after authentication (spec §26), never
    * exposes document content or a raw path. */

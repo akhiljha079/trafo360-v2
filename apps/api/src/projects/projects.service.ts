@@ -151,6 +151,18 @@ export class ProjectsService {
       newValue: dto,
       ipAddress: ip,
     });
+
+    // A project created (or left) without a template had no way to get one
+    // afterward - the edit form is the only place to assign/change it, and
+    // assigning one here has to actually generate the checklist too, not
+    // just set the FK, or the project would show "has a template" with an
+    // empty workflow tab. instantiateForProject() is upsert-based
+    // (idempotent), safe to call even if some stages already exist from an
+    // earlier template.
+    if (dto.workflowTemplateId && dto.workflowTemplateId !== before.workflowTemplateId) {
+      await this.workflow.instantiateForProject(id, actorUserId, ip);
+    }
+
     return project;
   }
 

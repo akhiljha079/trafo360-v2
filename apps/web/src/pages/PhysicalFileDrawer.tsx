@@ -1,8 +1,10 @@
+import { DeleteOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, DatePicker, Descriptions, Drawer, Form, Image, Input, message, Modal, Space, Table, Tag, Typography } from "antd";
+import { Button, DatePicker, Descriptions, Drawer, Form, Image, Input, message, Modal, Popconfirm, Space, Table, Tag, Typography } from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
+import { useAuth } from "../auth/useAuth";
 
 interface FileIssueTransaction {
   id: string;
@@ -36,6 +38,14 @@ interface LabelData {
   location: string;
   qrDataUrl: string;
 }
+interface IndexDocument {
+  id: string;
+  title: string;
+  status: string;
+  documentType: { name: string };
+  versions: { versionNo: number }[];
+  createdAt: string;
+}
 
 const STATUS_COLOR: Record<string, string> = {
   AVAILABLE: "success",
@@ -55,6 +65,7 @@ const TX_STATUS_COLOR: Record<string, string> = {
 
 export function PhysicalFileDrawer({ physicalFileId, onClose }: { physicalFileId: string | null; onClose: () => void }) {
   const qc = useQueryClient();
+  const canManage = useAuth((s) => s.hasPermission("physical_file.create"));
   const [locationForm] = Form.useForm();
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestDueDate, setRequestDueDate] = useState<dayjs.Dayjs | null>(null);
@@ -75,6 +86,15 @@ export function PhysicalFileDrawer({ physicalFileId, onClose }: { physicalFileId
     queryKey: ["physical-file-label", physicalFileId],
     queryFn: () => api.get<LabelData>(`/physical-files/${physicalFileId}/label`),
     enabled: labelOpen && !!physicalFileId,
+  });
+  // The index page lists every approved document for this project, in the
+  // order they'd actually be filed - it's what makes a printed physical
+  // file a real indexed dossier rather than just a label with a QR code on
+  // it. Only fetched once the print modal is actually open.
+  const indexQuery = useQuery({
+    queryKey: ["physical-file-index", fileQuery.data?.project.id],
+    queryFn: () => api.get<IndexDocument[]>(`/projects/${fileQuery.data!.project.id}/documents`),
+    enabled: labelOpen && !!fileQuery.data,
   });
 
   function invalidate() {
@@ -122,6 +142,19 @@ export function PhysicalFileDrawer({ physicalFileId, onClose }: { physicalFileId
       invalidate();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : "Action failed");
+    }
+  }
+
+  async function onDelete() {
+    if (!fileQuery.data) return;
+    try {
+      await api.delete(`/physical-files/${physicalFileId}`);
+      message.success("Physical file deleted");
+      qc.invalidateQueries({ queryKey: ["physical-file-for-project", fileQuery.data.project.id] });
+      qc.invalidateQueries({ queryKey: ["physical-files-list"] });
+      onClose();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Delete failed");
     }
   }
 
@@ -179,11 +212,24 @@ export function PhysicalFileDrawer({ physicalFileId, onClose }: { physicalFileId
           </Form>
 
           <Space style={{ margin: "16px 0" }}>
-            <Button onClick={() => setLabelOpen(true)}>View QR / Label</Button>
+            <Button onClick={() => setLabelOpen(true)}>View QR / Label / Index</Button>
             {fileQuery.data.status === "AVAILABLE" && (
               <Button type="primary" onClick={() => setRequestOpen(true)}>
                 Request this file
               </Button>
+            )}
+            {canManage && fileQuery.data.status !== "ISSUED" && (
+              <Popconfirm
+                title="Delete this physical file record?"
+                description="Only possible if it has no issue/return history yet."
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+                onConfirm={onDelete}
+              >
+                <Button danger icon={<DeleteOutlined />}>
+                  Delete
+                </Button>
+              </Popconfirm>
             )}
           </Space>
 
@@ -239,9 +285,21 @@ export function PhysicalFileDrawer({ physicalFileId, onClose }: { physicalFileId
         </Form>
       </Modal>
 
-      <Modal title="QR Label" open={labelOpen} onCancel={() => setLabelOpen(false)} footer={null}>
+      <Modal title="Label / Index" open={labelOpen} onCancel={() => setLabelOpen(false)} footer={null} width={640}>
+        <style>{`
+          @media print {
+            .pf-modal-chrome { display: none !important; }
+            .pf-print-page { page-break-after: always; border: none !important; }
+            .pf-print-page:last-child { page-break-after: auto; }
+          }
+        `}</style>
+        <Typography.Paragraph type="secondary" className="pf-modal-chrome" style={{ marginBottom: 16 }}>
+          Printed order: this label sheet first, then the document index below it - insert the
+          actual physical documents into the folder after the index, in the order listed.
+        </Typography.Paragraph>
+
         {labelQuery.data && (
-          <div style={{ textAlign: "center", border: "1px solid #eee", padding: 16 }}>
+          <div className="pf-print-page" style={{ textAlign: "center", border: "1px solid #eee", padding: 16, marginBottom: 24 }}>
             <Typography.Title level={5}>TRAFO 360 — Project File</Typography.Title>
             <Typography.Text strong>Project No: </Typography.Text>
             {labelQuery.data.projectNo}
@@ -258,11 +316,40 @@ export function PhysicalFileDrawer({ physicalFileId, onClose }: { physicalFileId
             <Image src={labelQuery.data.qrDataUrl} width={160} preview={false} style={{ margin: "12px 0" }} />
             <br />
             <Typography.Text code>{labelQuery.data.fileCode}</Typography.Text>
-            <div style={{ marginTop: 12 }}>
-              <Button onClick={() => window.print()}>Print</Button>
-            </div>
           </div>
         )}
+
+        <div className="pf-print-page" style={{ border: "1px solid #eee", padding: 16 }}>
+          <Typography.Title level={5} style={{ textAlign: "center" }}>
+            Document Index
+          </Typography.Title>
+          <Typography.Text type="secondary" style={{ display: "block", textAlign: "center", marginBottom: 12 }}>
+            {labelQuery.data?.projectNo} — {labelQuery.data?.projectName}
+          </Typography.Text>
+          <Table
+            size="small"
+            pagination={false}
+            loading={indexQuery.isLoading}
+            dataSource={indexQuery.data ?? []}
+            rowKey="id"
+            locale={{ emptyText: "No documents uploaded for this project yet." }}
+            columns={[
+              { title: "#", render: (_, __, i) => i + 1, width: 40 },
+              { title: "Document Type", dataIndex: ["documentType", "name"] },
+              { title: "Title", dataIndex: "title" },
+              { title: "Version", render: (_, d) => `v${d.versions[0]?.versionNo ?? "—"}` },
+              {
+                title: "Status",
+                dataIndex: "status",
+                render: (v: string) => <Tag color={v === "APPROVED" ? "success" : "default"}>{v.replace(/_/g, " ")}</Tag>,
+              },
+            ]}
+          />
+        </div>
+
+        <div className="pf-modal-chrome" style={{ marginTop: 16, textAlign: "center" }}>
+          <Button onClick={() => window.print()}>Print</Button>
+        </div>
       </Modal>
     </Drawer>
   );

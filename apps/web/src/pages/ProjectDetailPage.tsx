@@ -74,6 +74,10 @@ export function ProjectDetailPage() {
     queryKey: ["users-for-member"],
     queryFn: () => api.get<{ items: { id: string; name: string }[] }>("/users?pageSize=200"),
   });
+  const workflowTemplatesQuery = useQuery({
+    queryKey: ["workflow-templates"],
+    queryFn: () => api.get<{ id: string; name: string }[]>("/workflow-templates"),
+  });
   const [physicalFileDrawerOpen, setPhysicalFileDrawerOpen] = useState(false);
   const physicalFileQuery = useQuery({
     queryKey: ["physical-file-for-project", id],
@@ -155,6 +159,7 @@ export function ProjectDetailPage() {
               onClick={() => {
                 editForm.setFieldsValue({
                   ...p,
+                  workflowTemplateId: p.workflowTemplate?.id,
                   targetDeliveryDate: p.targetDeliveryDate ? dayjs(p.targetDeliveryDate) : undefined,
                   actualDispatchDate: p.actualDispatchDate ? dayjs(p.actualDispatchDate) : undefined,
                 });
@@ -273,6 +278,17 @@ export function ProjectDetailPage() {
         <Form form={editForm} layout="vertical">
           <Form.Item name="name" label="Project name" rules={[{ required: true }]}>
             <Input />
+          </Form.Item>
+          <Form.Item
+            name="workflowTemplateId"
+            label="Workflow template"
+            extra="Assigning or changing this generates the document checklist for that template - existing uploaded documents are kept."
+          >
+            <Select
+              allowClear
+              placeholder="No workflow template assigned"
+              options={workflowTemplatesQuery.data?.map((w) => ({ value: w.id, label: w.name }))}
+            />
           </Form.Item>
           <Form.Item name="customerPo" label="Customer PO">
             <Input />
