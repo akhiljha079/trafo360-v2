@@ -6,6 +6,21 @@ import * as path from "node:path";
 // API (upload path) and the worker (sync job) so the two never drift on
 // what "NFS_STORED" vs "LOCAL_PENDING_SYNC" actually means on disk.
 
+/** Turns a human name into a filesystem-safe folder segment: lowercase,
+ * spaces/punctuation collapsed to single hyphens, trimmed, capped so deep
+ * paths don't hit OS path-length limits. Used to build the NFS folder
+ * structure out of real project numbers/document type/title names instead
+ * of opaque database IDs - so anyone browsing the Synology share directly
+ * can actually tell what a folder is without cross-referencing the DB. */
+export function slugify(input: string, maxLength = 60): string {
+  const slug = input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return (slug || "untitled").slice(0, maxLength);
+}
+
 export function checksumOf(buffer: Buffer): string {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }

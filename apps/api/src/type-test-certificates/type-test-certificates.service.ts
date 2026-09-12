@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import * as crypto from "node:crypto";
 import * as path from "node:path";
-import { NOTIFICATION_EVENTS } from "@trafo360/shared";
+import { NOTIFICATION_EVENTS, slugify } from "@trafo360/shared";
 import { AuditService } from "../common/audit.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -70,7 +69,12 @@ export class TypeTestCertificatesService {
   async create(dto: CreateCertificateDto, file: Express.Multer.File, userId: string, ip?: string) {
     this.validateFile(file);
     const safeName = this.sanitizeFileName(file.originalname);
-    const relativePath = path.posix.join("certificates", `${crypto.randomUUID()}-${safeName}`);
+    const relativePath = path.posix.join(
+      "certificates",
+      slugify(dto.transformerType),
+      `${slugify(dto.title)}${dto.certificateNo ? `-${slugify(dto.certificateNo)}` : ""}`,
+      safeName,
+    );
     const written = await this.storage.write(file.buffer, relativePath);
 
     const certificate = await this.prisma.typeTestCertificate.create({
@@ -112,7 +116,18 @@ export class TypeTestCertificatesService {
     this.validateFile(file);
 
     const safeName = this.sanitizeFileName(file.originalname);
-    const relativePath = path.posix.join("certificates", `${crypto.randomUUID()}-${safeName}`);
+    // Same folder as create() as long as certificateNo doesn't change on
+    // this renewal - transformerType/title are immutable via renew, so
+    // this naturally lands the replacement file right next to (functionally
+    // replacing) the one it supersedes rather than scattering renewals
+    // across unrelated-looking folders.
+    const certNo = dto.certificateNo ?? existing.certificateNo;
+    const relativePath = path.posix.join(
+      "certificates",
+      slugify(existing.transformerType),
+      `${slugify(existing.title)}${certNo ? `-${slugify(certNo)}` : ""}`,
+      safeName,
+    );
     const written = await this.storage.write(file.buffer, relativePath);
 
     const certificate = await this.prisma.typeTestCertificate.update({

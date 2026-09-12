@@ -1,7 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import * as crypto from "node:crypto";
 import * as path from "node:path";
-import { NOTIFICATION_EVENTS } from "@trafo360/shared";
+import { NOTIFICATION_EVENTS, slugify } from "@trafo360/shared";
 import { AuditService } from "../common/audit.service";
 import { PermissionsService } from "../common/permissions.service";
 import { DocumentRequestsService } from "../document-requests/document-requests.service";
@@ -188,41 +187,57 @@ export class DocumentsService {
     let documentTypeId = dto.documentTypeId;
     let confidentialityLevelId = dto.confidentialityLevelId ?? project.confidentialityLevelId;
     let projectDocumentRequirementId = dto.projectDocumentRequirementId;
+    let documentTypeName: string;
+    let documentTitle: string;
 
     if (documentId) {
-      const existing = await this.prisma.document.findUnique({ where: { id: documentId } });
+      const existing = await this.prisma.document.findUnique({ where: { id: documentId }, include: { documentType: true } });
       if (!existing) throw new NotFoundException("Document not found");
       documentTypeId = existing.documentTypeId;
       confidentialityLevelId = existing.confidentialityLevelId;
       projectDocumentRequirementId = existing.projectDocumentRequirementId ?? undefined;
+      documentTypeName = existing.documentType.name;
+      documentTitle = existing.title;
     } else {
       if (!documentTypeId) throw new BadRequestException("documentTypeId is required for a new document");
       const documentType = await this.prisma.documentType.findUnique({ where: { id: documentTypeId } });
       if (!documentType) throw new NotFoundException("Document type not found");
+      const title = dto.title ?? documentType.name;
       const document = await this.prisma.document.create({
         data: {
           projectId,
           documentTypeId,
           projectDocumentRequirementId,
           confidentialityLevelId,
-          title: dto.title ?? documentType.name,
+          title,
           status: "DRAFT",
           createdById: userId,
         },
       });
       documentId = document.id;
+      documentTypeName = documentType.name;
+      documentTitle = title;
     }
 
     const versionCount = await this.prisma.documentVersion.count({ where: { documentId } });
     const versionNo = versionCount + 1;
 
     const safeName = this.sanitizeFileName(file.originalname);
+    // Human-readable on purpose: someone browsing the NFS share directly
+    // (not just through the app) needs to be able to tell what a folder is
+    // without cross-referencing the database - projectNo/type/title
+    // instead of raw IDs. versionNo already guarantees no filename
+    // collision within a document's own folder even if the same original
+    // filename gets re-uploaded for a later version, so no random suffix
+    // is needed on the file itself; the short id suffix on the document
+    // folder only exists to disambiguate two different documents that
+    // happen to share both a type and a title.
     const relativePath = path.posix.join(
       "projects",
-      projectId,
-      documentTypeId!,
-      documentId,
-      `v${versionNo}-${crypto.randomUUID()}-${safeName}`,
+      project.projectNo,
+      slugify(documentTypeName),
+      `${slugify(documentTitle)}-${documentId.slice(-6)}`,
+      `v${versionNo}-${safeName}`,
     );
     const written = await this.storage.write(file.buffer, relativePath);
 
