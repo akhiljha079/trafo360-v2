@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Drawer, Form, Input, message, Modal, Popconfirm, Select, Space, Tag, Timeline, Typography, Upload } from "antd";
-import { DeleteOutlined, EditOutlined, UploadOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, EyeOutlined, UploadOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/useAuth";
+import { FilePreviewModal } from "../layout/FilePreviewModal";
 
 interface Approval {
   id: string;
@@ -16,6 +17,7 @@ interface Version {
   id: string;
   versionNo: number;
   fileName: string;
+  mimeType: string;
   status: string;
   storageStatus: string;
   revisionReason: string | null;
@@ -59,6 +61,7 @@ export function DocumentDetailDrawer({
   const qc = useQueryClient();
   const [comment, setComment] = useState<Record<string, string>>({});
   const [editOpen, setEditOpen] = useState(false);
+  const [previewVersion, setPreviewVersion] = useState<Version | null>(null);
   const [uploadingVersion, setUploadingVersion] = useState(false);
   const [editForm] = Form.useForm();
   const canEdit = useAuth((s) => s.hasPermission("document.edit"));
@@ -199,9 +202,14 @@ export function DocumentDetailDrawer({
                     {v.uploadedBy.name} · {new Date(v.createdAt).toLocaleString()}
                   </div>
                   {v.revisionReason && <div style={{ fontSize: 12 }}>Reason: {v.revisionReason}</div>}
-                  <a href={api.downloadUrl(v.id)} target="_blank" rel="noreferrer">
-                    Download
-                  </a>
+                  <Space size="small">
+                    <Button type="link" size="small" style={{ padding: 0 }} icon={<EyeOutlined />} onClick={() => setPreviewVersion(v)}>
+                      View
+                    </Button>
+                    <a href={api.downloadUrl(v.id)} target="_blank" rel="noreferrer">
+                      Download
+                    </a>
+                  </Space>
 
                   {v.approvals.map((a) => (
                     <div key={a.id} style={{ marginTop: 8, padding: 8, background: "#fafafa", borderRadius: 4 }}>
@@ -260,6 +268,17 @@ export function DocumentDetailDrawer({
           </Form.Item>
         </Form>
       </Modal>
+
+      {previewVersion && (
+        <FilePreviewModal
+          open={!!previewVersion}
+          onClose={() => setPreviewVersion(null)}
+          title={`${query.data?.title} - v${previewVersion.versionNo}`}
+          mimeType={previewVersion.mimeType}
+          previewUrl={api.previewUrl(previewVersion.id)}
+          downloadUrl={api.downloadUrl(previewVersion.id)}
+        />
+      )}
     </Drawer>
   );
 }

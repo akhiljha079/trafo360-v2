@@ -205,14 +205,14 @@ export class TypeTestCertificatesService {
     await this.prisma.typeTestCertificate.delete({ where: { id } });
   }
 
-  async prepareDownload(id: string, userId: string, ip?: string) {
+  async prepareDownload(id: string, userId: string, ip?: string, isPreview = false) {
     const certificate = await this.prisma.typeTestCertificate.findUnique({ where: { id } });
     if (!certificate) throw new NotFoundException("Certificate not found");
 
     const buffer = await this.storage.read(certificate.storagePath, certificate.storageStatus);
     await this.audit.log({
       userId,
-      action: "TYPE_TEST_CERTIFICATE_DOWNLOADED",
+      action: isPreview ? "TYPE_TEST_CERTIFICATE_PREVIEWED" : "TYPE_TEST_CERTIFICATE_DOWNLOADED",
       objectType: "TypeTestCertificate",
       objectId: certificate.id,
       ipAddress: ip,

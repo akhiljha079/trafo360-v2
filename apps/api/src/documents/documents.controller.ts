@@ -91,13 +91,27 @@ export class DocumentsController {
     return this.documents.uploadVersionForExistingDocument(documentId, dto, file, userId, ip);
   }
 
+  /** Same auth/confidentiality/audit path as a real download - `?inline=1`
+   * only changes Content-Disposition so the browser renders the file (PDF/
+   * image) in place instead of triggering a save dialog, and tags the
+   * audit log entry as a preview rather than a download. Never trust the
+   * client to say what's previewable - that's a frontend-only choice
+   * (which mime types get a View button at all); the server will happily
+   * stream anything inline if asked, same as it always could via download. */
   @Get("versions/:versionId/download")
   @Auth("document.download")
-  async download(@Param("versionId") versionId: string, @CurrentUserId() userId: string, @Res() res: Response, @ClientIp() ip?: string) {
-    const { buffer, fileName, mimeType } = await this.documents.prepareDownload(versionId, userId, ip);
+  async download(
+    @Param("versionId") versionId: string,
+    @Query("inline") inline: string | undefined,
+    @CurrentUserId() userId: string,
+    @Res() res: Response,
+    @ClientIp() ip?: string,
+  ) {
+    const isPreview = inline === "1";
+    const { buffer, fileName, mimeType } = await this.documents.prepareDownload(versionId, userId, ip, isPreview);
     res.set({
       "Content-Type": mimeType,
-      "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+      "Content-Disposition": `${isPreview ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
       "Content-Length": buffer.length,
     });
     res.send(buffer);

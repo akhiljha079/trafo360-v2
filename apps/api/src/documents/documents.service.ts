@@ -506,7 +506,7 @@ export class DocumentsService {
    * downloads (spec §23) are deferred to Phase 5's DocumentRequest flow -
    * the confidentiality *ceiling* check below is enforced now, the
    * additional per-download approval step is not yet. */
-  async prepareDownload(versionId: string, userId: string, ip?: string) {
+  async prepareDownload(versionId: string, userId: string, ip?: string, isPreview = false) {
     const version = await this.prisma.documentVersion.findUnique({
       where: { id: versionId },
       include: { document: { include: { confidentialityLevel: true } } },
@@ -534,7 +534,11 @@ export class DocumentsService {
     const buffer = await this.storage.read(version.storagePath, version.storageStatus);
     await this.audit.log({
       userId,
-      action: "DOCUMENT_DOWNLOADED",
+      // Same permission/confidentiality checks either way - viewing a
+      // preview inline is functionally the same file access as a download,
+      // just distinguished in the audit trail so "who downloaded this"
+      // doesn't get muddled with "who merely viewed it on screen".
+      action: isPreview ? "DOCUMENT_PREVIEWED" : "DOCUMENT_DOWNLOADED",
       objectType: "DocumentVersion",
       objectId: version.id,
       ipAddress: ip,

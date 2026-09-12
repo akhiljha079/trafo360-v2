@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UploadedFile,
   UseGuards,
@@ -78,11 +79,18 @@ export class TypeTestCertificatesController {
 
   @Get(":id/download")
   @Auth("certificate.view")
-  async download(@Param("id") id: string, @CurrentUserId() userId: string, @Res() res: Response, @ClientIp() ip?: string) {
-    const { buffer, fileName, mimeType } = await this.certificates.prepareDownload(id, userId, ip);
+  async download(
+    @Param("id") id: string,
+    @Query("inline") inline: string | undefined,
+    @CurrentUserId() userId: string,
+    @Res() res: Response,
+    @ClientIp() ip?: string,
+  ) {
+    const isPreview = inline === "1";
+    const { buffer, fileName, mimeType } = await this.certificates.prepareDownload(id, userId, ip, isPreview);
     res.set({
       "Content-Type": mimeType,
-      "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+      "Content-Disposition": `${isPreview ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
       "Content-Length": buffer.length,
     });
     res.send(buffer);

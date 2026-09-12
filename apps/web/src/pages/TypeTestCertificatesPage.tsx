@@ -1,16 +1,18 @@
-import { DeleteOutlined, DownloadOutlined, EditOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, DatePicker, Form, Input, message, Modal, Popconfirm, Table, Tag, Typography, Upload } from "antd";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/useAuth";
+import { FilePreviewModal } from "../layout/FilePreviewModal";
 
 interface CertificateRow {
   id: string;
   transformerType: string;
   title: string;
   certificateNo: string | null;
+  mimeType: string;
   expiryDate: string;
   daysLeft: number;
   expiryStatus: "VALID" | "EXPIRING_SOON" | "EXPIRED";
@@ -41,6 +43,7 @@ export function TypeTestCertificatesPage() {
   const [editTarget, setEditTarget] = useState<CertificateRow | null>(null);
   const [editForm] = Form.useForm();
   const [busy, setBusy] = useState<"create" | "renew" | "edit" | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<CertificateRow | null>(null);
 
   const query = useQuery({
     queryKey: ["type-test-certificates"],
@@ -175,6 +178,9 @@ export function TypeTestCertificatesPage() {
             title: "Actions",
             render: (_, r) => (
               <span style={{ display: "flex", gap: 8 }}>
+                <Button size="small" icon={<EyeOutlined />} onClick={() => setPreviewTarget(r)}>
+                  View
+                </Button>
                 <Button
                   size="small"
                   icon={<DownloadOutlined />}
@@ -323,6 +329,17 @@ export function TypeTestCertificatesPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {previewTarget && (
+        <FilePreviewModal
+          open={!!previewTarget}
+          onClose={() => setPreviewTarget(null)}
+          title={previewTarget.title}
+          mimeType={previewTarget.mimeType}
+          previewUrl={api.certificatePreviewUrl(previewTarget.id)}
+          downloadUrl={api.certificateDownloadUrl(previewTarget.id)}
+        />
+      )}
     </div>
   );
 }

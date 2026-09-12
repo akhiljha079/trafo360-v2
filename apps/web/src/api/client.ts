@@ -59,4 +59,7 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   upload: <T>(path: string, formData: FormData) => request<T>(path, { method: "POST", body: formData }),
   downloadUrl: (versionId: string) => `${BASE}/documents/versions/${versionId}/download`,
+  previewUrl: (versionId: string) => `${BASE}/documents/versions/${versionId}/download?inline=1`,
+  certificateDownloadUrl: (id: string) => `${BASE}/type-test-certificates/${id}/download`,
+  certificatePreviewUrl: (id: string) => `${BASE}/type-test-certificates/${id}/download?inline=1`,
 };
