@@ -149,19 +149,27 @@ export function WorkflowPage() {
   }
 
   async function toggleActive(template: WorkflowTemplate) {
-    await api.post(`/workflow-templates/${template.id}/${template.active ? "deactivate" : "activate"}`);
-    qc.invalidateQueries({ queryKey: ["workflow-template", currentId] });
-    qc.invalidateQueries({ queryKey: ["workflow-templates-list"] });
+    try {
+      await api.post(`/workflow-templates/${template.id}/${template.active ? "deactivate" : "activate"}`);
+      qc.invalidateQueries({ queryKey: ["workflow-template", currentId] });
+      qc.invalidateQueries({ queryKey: ["workflow-templates-list"] });
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Failed to change template status");
+    }
   }
 
   async function onCreateParentStage() {
     if (!currentId) return;
     const values = await parentForm.validateFields();
-    await api.post(`/workflow-templates/${currentId}/parent-stages`, values);
-    message.success("Parent stage added");
-    setCreateParentOpen(false);
-    parentForm.resetFields();
-    qc.invalidateQueries({ queryKey: ["workflow-template", currentId] });
+    try {
+      await api.post(`/workflow-templates/${currentId}/parent-stages`, values);
+      message.success("Parent stage added");
+      setCreateParentOpen(false);
+      parentForm.resetFields();
+      qc.invalidateQueries({ queryKey: ["workflow-template", currentId] });
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Failed to add parent stage");
+    }
   }
 
   function refreshTemplate() {
@@ -272,11 +280,15 @@ function ParentStageDrawer({
   async function addStage() {
     if (!parentStage) return;
     const values = await form.validateFields();
-    await api.post(`/parent-stages/${parentStage.id}/stages`, values);
-    message.success("Stage added");
-    setAddOpen(false);
-    form.resetFields();
-    onChanged();
+    try {
+      await api.post(`/parent-stages/${parentStage.id}/stages`, values);
+      message.success("Stage added");
+      setAddOpen(false);
+      form.resetFields();
+      onChanged();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Failed to add stage");
+    }
   }
 
   async function move(stage: Stage, direction: -1 | 1) {
@@ -286,14 +298,22 @@ function ParentStageDrawer({
     const swapIndex = index + direction;
     if (swapIndex < 0 || swapIndex >= ordered.length) return;
     [ordered[index], ordered[swapIndex]] = [ordered[swapIndex], ordered[index]];
-    await api.patch(`/parent-stages/${parentStage.id}/stages/reorder`, { orderedIds: ordered.map((s) => s.id) });
-    onChanged();
+    try {
+      await api.patch(`/parent-stages/${parentStage.id}/stages/reorder`, { orderedIds: ordered.map((s) => s.id) });
+      onChanged();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Failed to reorder stages");
+    }
   }
 
   async function deleteStage(stage: Stage) {
-    await api.delete(`/stages/${stage.id}`);
-    message.success("Stage deleted");
-    onChanged();
+    try {
+      await api.delete(`/stages/${stage.id}`);
+      message.success("Stage deleted");
+      onChanged();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Failed to delete stage");
+    }
   }
 
   return (
@@ -358,20 +378,33 @@ function StageDrawer({ stage, onClose, onChanged }: { stage: Stage | null; onClo
 
   async function addRequirement() {
     if (!stage || !documentTypeId) return;
-    await api.post(`/stages/${stage.id}/document-requirements`, { documentTypeId, mandatory });
-    message.success("Requirement added");
-    setDocumentTypeId(undefined);
-    onChanged();
+    try {
+      await api.post(`/stages/${stage.id}/document-requirements`, { documentTypeId, mandatory });
+      message.success("Requirement added");
+      setDocumentTypeId(undefined);
+      onChanged();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Failed to add requirement");
+    }
   }
 
   async function removeRequirement(id: string) {
-    await api.delete(`/document-requirements/${id}`);
-    onChanged();
+    try {
+      await api.delete(`/document-requirements/${id}`);
+      message.success("Requirement removed");
+      onChanged();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Failed to remove requirement");
+    }
   }
 
   async function toggleMandatory(req: Requirement) {
-    await api.patch(`/document-requirements/${req.id}`, { mandatory: !req.mandatory });
-    onChanged();
+    try {
+      await api.patch(`/document-requirements/${req.id}`, { mandatory: !req.mandatory });
+      onChanged();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Failed to update requirement");
+    }
   }
 
   return (

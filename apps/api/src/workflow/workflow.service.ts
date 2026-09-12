@@ -184,8 +184,21 @@ export class WorkflowService {
     return parentStage;
   }
 
+  /** Same FK-safety-net as deleteRequirement below: ProjectStage.stageId has
+   * no ON DELETE CASCADE, so this fails once any project has instantiated
+   * this template - cascading through Stage (which does cascade from
+   * ParentStage) hits that same wall on the first stage that's in use. */
   async deleteParentStage(id: string, actorUserId: string, ip?: string) {
-    await this.prisma.parentStage.delete({ where: { id } });
+    try {
+      await this.prisma.parentStage.delete({ where: { id } });
+    } catch (err) {
+      if ((err as { code?: string }).code === "P2003" || (err as { code?: string }).code === "P2014") {
+        throw new ConflictException(
+          "This parent stage (or a stage within it) is already in use by one or more projects and can't be removed. Deactivate this template and create a new version for future projects instead.",
+        );
+      }
+      throw err;
+    }
     await this.audit.log({
       userId: actorUserId,
       action: "PARENT_STAGE_DELETED",
@@ -244,8 +257,19 @@ export class WorkflowService {
     return stage;
   }
 
+  /** Same FK-safety-net as deleteRequirement/deleteParentStage:
+   * ProjectStage.stageId has no ON DELETE CASCADE. */
   async deleteStage(id: string, actorUserId: string, ip?: string) {
-    await this.prisma.stage.delete({ where: { id } });
+    try {
+      await this.prisma.stage.delete({ where: { id } });
+    } catch (err) {
+      if ((err as { code?: string }).code === "P2003" || (err as { code?: string }).code === "P2014") {
+        throw new ConflictException(
+          "This stage is already in use by one or more projects and can't be removed. Deactivate this template and create a new version for future projects instead.",
+        );
+      }
+      throw err;
+    }
     await this.audit.log({ userId: actorUserId, action: "STAGE_DELETED", objectType: "Stage", objectId: id, ipAddress: ip });
     return { ok: true };
   }
@@ -306,8 +330,27 @@ export class WorkflowService {
     return requirement;
   }
 
+  /** ProjectDocumentRequirement.stageDocumentRequirementId references this
+   * without ON DELETE CASCADE (deliberately, per schema.prisma) - as soon
+   * as any project instantiates this template (ProjectsService.create/
+   * update -> instantiateForProject), every requirement in it gets its own
+   * ProjectDocumentRequirement row, which makes a raw delete here fail
+   * with a foreign key violation. Silently swallowed by the frontend until
+   * now (no try/catch there either - fixed alongside this), which is
+   * exactly why removing a requirement looked like it did nothing: it was
+   * failing every time on any template already in use, with zero feedback
+   * either way. */
   async deleteRequirement(id: string, actorUserId: string, ip?: string) {
-    await this.prisma.stageDocumentRequirement.delete({ where: { id } });
+    try {
+      await this.prisma.stageDocumentRequirement.delete({ where: { id } });
+    } catch (err) {
+      if ((err as { code?: string }).code === "P2003" || (err as { code?: string }).code === "P2014") {
+        throw new ConflictException(
+          "This requirement is already in use by one or more projects (it was instantiated into their checklists) and can't be removed from the template. Mark it Not Applicable on those specific projects instead, or deactivate this template and create a new version for future projects.",
+        );
+      }
+      throw err;
+    }
     await this.audit.log({
       userId: actorUserId,
       action: "STAGE_DOCUMENT_REQUIREMENT_DELETED",
