@@ -81,8 +81,14 @@ export function WorkflowPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
   const [createParentOpen, setCreateParentOpen] = useState(false);
-  const [activeParent, setActiveParent] = useState<ParentStage | null>(null);
-  const [activeStage, setActiveStage] = useState<Stage | null>(null);
+  // IDs, not the objects themselves - a captured object snapshot doesn't
+  // update when the underlying query refetches after an edit (e.g. toggling
+  // "mandatory" or adding/removing a document requirement), which is
+  // exactly what made the workflow drawers look like they weren't
+  // refreshing without a full page reload. Deriving the live object from
+  // templateQuery.data below means every refetch is reflected immediately.
+  const [activeParentId, setActiveParentId] = useState<string | null>(null);
+  const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [templateForm] = Form.useForm();
   const [parentForm] = Form.useForm();
   const [docTypesOpen, setDocTypesOpen] = useState(false);
@@ -99,6 +105,15 @@ export function WorkflowPage() {
     queryFn: () => api.get<WorkflowTemplate>(`/workflow-templates/${currentId}`),
     enabled: !!currentId,
   });
+
+  const activeParent = useMemo(
+    () => templateQuery.data?.parentStages.find((p) => p.id === activeParentId) ?? null,
+    [templateQuery.data, activeParentId],
+  );
+  const activeStage = useMemo(
+    () => activeParent?.stages.find((s) => s.id === activeStageId) ?? null,
+    [activeParent, activeStageId],
+  );
 
   const { nodes, edges } = useMemo(() => {
     const parents = templateQuery.data?.parentStages ?? [];
@@ -190,10 +205,7 @@ export function WorkflowPage() {
             <ReactFlow
               nodes={nodes}
               edges={edges}
-              onNodeClick={(_, node) => {
-                const parent = templateQuery.data!.parentStages.find((p) => p.id === node.id);
-                if (parent) setActiveParent(parent);
-              }}
+              onNodeClick={(_, node) => setActiveParentId(node.id)}
               fitView
               nodesDraggable={false}
               nodesConnectable={false}
@@ -233,11 +245,11 @@ export function WorkflowPage() {
 
       <ParentStageDrawer
         parentStage={activeParent}
-        onClose={() => setActiveParent(null)}
+        onClose={() => setActiveParentId(null)}
         onChanged={refreshTemplate}
-        onOpenStage={setActiveStage}
+        onOpenStage={(stage) => setActiveStageId(stage.id)}
       />
-      <StageDrawer stage={activeStage} onClose={() => setActiveStage(null)} onChanged={refreshTemplate} />
+      <StageDrawer stage={activeStage} onClose={() => setActiveStageId(null)} onChanged={refreshTemplate} />
       <DocumentTypesDrawer open={docTypesOpen} onClose={() => setDocTypesOpen(false)} />
     </div>
   );
