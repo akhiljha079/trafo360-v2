@@ -81,4 +81,31 @@ export class CustomersService {
     });
     return customer;
   }
+
+  /** Project.customerId has no ON DELETE CASCADE (deliberately, per
+   * schema.prisma) - Postgres itself refuses to delete a customer that
+   * still has projects, same safety net used for project deletion, rather
+   * than this service adding its own cascade/guard logic. */
+  async delete(id: string, actorUserId: string, ip?: string): Promise<void> {
+    const customer = await this.prisma.customer.findUnique({ where: { id } });
+    if (!customer) throw new NotFoundException("Customer not found");
+
+    try {
+      await this.prisma.customer.delete({ where: { id } });
+    } catch (err) {
+      if ((err as { code?: string }).code === "P2003" || (err as { code?: string }).code === "P2014") {
+        throw new ConflictException("This customer still has projects tied to it - remove or reassign those first.");
+      }
+      throw err;
+    }
+
+    await this.audit.log({
+      userId: actorUserId,
+      action: "CUSTOMER_DELETED",
+      objectType: "Customer",
+      objectId: id,
+      oldValue: { code: customer.code, name: customer.name },
+      ipAddress: ip,
+    });
+  }
 }

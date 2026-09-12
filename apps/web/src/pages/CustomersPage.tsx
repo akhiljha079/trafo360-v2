@@ -1,7 +1,9 @@
+import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Form, Input, message, Modal, Select, Switch, Table, Tag, Typography } from "antd";
+import { Button, Form, Input, message, Modal, Popconfirm, Select, Switch, Table, Tag, Typography } from "antd";
 import { useState } from "react";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
+import { useAuth } from "../auth/useAuth";
 
 interface CustomerRow {
   id: string;
@@ -18,6 +20,7 @@ interface CustomerRow {
 
 export function CustomersPage() {
   const qc = useQueryClient();
+  const canManage = useAuth((s) => s.hasPermission("customer.manage"));
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState<CustomerRow | "new" | null>(null);
   const [form] = Form.useForm();
@@ -50,6 +53,16 @@ export function CustomersPage() {
     }
   }
 
+  async function onDelete(customer: CustomerRow) {
+    try {
+      await api.delete(`/customers/${customer.id}`);
+      message.success("Customer deleted");
+      qc.invalidateQueries({ queryKey: ["customers"] });
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Delete failed");
+    }
+  }
+
   return (
     <div>
       <Typography.Title level={3}>Customers</Typography.Title>
@@ -60,16 +73,18 @@ export function CustomersPage() {
           style={{ width: 320 }}
           allowClear
         />
-        <Button type="primary" onClick={() => openEdit("new")}>
-          Create customer
-        </Button>
+        {canManage && (
+          <Button type="primary" onClick={() => openEdit("new")}>
+            Create customer
+          </Button>
+        )}
       </div>
 
       <Table
         rowKey="id"
         loading={query.isLoading}
         dataSource={query.data?.items ?? []}
-        onRow={(record) => ({ onClick: () => openEdit(record), style: { cursor: "pointer" } })}
+        onRow={canManage ? (record) => ({ onClick: () => openEdit(record), style: { cursor: "pointer" } }) : undefined}
         columns={[
           { title: "Code", dataIndex: "code" },
           { title: "Name", dataIndex: "name" },
@@ -82,6 +97,31 @@ export function CustomersPage() {
             dataIndex: "active",
             render: (v: boolean) => <Tag color={v ? "green" : "red"}>{v ? "Active" : "Inactive"}</Tag>,
           },
+          ...(canManage
+            ? [
+                {
+                  title: "Actions",
+                  render: (_: unknown, r: CustomerRow) => (
+                    <span style={{ display: "flex", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+                      <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>
+                        Edit
+                      </Button>
+                      <Popconfirm
+                        title="Delete this customer?"
+                        description={r._count.projects > 0 ? "This customer has projects and cannot be deleted until those are removed or reassigned." : "This cannot be undone."}
+                        okText="Delete"
+                        okButtonProps={{ danger: true, disabled: r._count.projects > 0 }}
+                        onConfirm={() => onDelete(r)}
+                      >
+                        <Button size="small" danger icon={<DeleteOutlined />}>
+                          Delete
+                        </Button>
+                      </Popconfirm>
+                    </span>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
 
