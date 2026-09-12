@@ -1,3 +1,4 @@
+import { CheckCircleFilled, ClockCircleFilled, CloseCircleFilled } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { Input, Table, Tag, Typography } from "antd";
 import { useState } from "react";
@@ -23,6 +24,11 @@ const STATUS_COLOR: Record<string, string> = {
   UNDER_REVIEW: "warning",
   DRAFT: "default",
 };
+const STATUS_ICON: Record<string, React.ReactNode> = {
+  APPROVED: <CheckCircleFilled />,
+  REJECTED: <CloseCircleFilled />,
+  UNDER_REVIEW: <ClockCircleFilled />,
+};
 
 export function DocumentLibraryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -32,6 +38,7 @@ export function DocumentLibraryPage() {
   const query = useQuery({
     queryKey: ["document-library", search],
     queryFn: () => api.get<DocumentRow[]>(`/documents?search=${encodeURIComponent(search)}`),
+    refetchInterval: 15_000,
   });
 
   return (
@@ -65,7 +72,11 @@ export function DocumentLibraryPage() {
           {
             title: "Status",
             dataIndex: "status",
-            render: (v: string) => <Tag color={STATUS_COLOR[v] ?? "default"}>{v.replace(/_/g, " ")}</Tag>,
+            render: (v: string) => (
+              <Tag icon={STATUS_ICON[v]} color={STATUS_COLOR[v] ?? "default"}>
+                {v.replace(/_/g, " ")}
+              </Tag>
+            ),
           },
           { title: "Uploaded By", dataIndex: ["createdBy", "name"] },
           { title: "Date", dataIndex: "createdAt", render: (v: string) => new Date(v).toLocaleDateString() },

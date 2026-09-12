@@ -67,6 +67,10 @@ export function DocumentDetailDrawer({
     queryKey: ["document", documentId],
     queryFn: () => api.get<DocumentDetail>(`/documents/${documentId}`),
     enabled: !!documentId,
+    // An approval decision often comes from someone else's session - polls
+    // while this drawer is open so a pending version's status doesn't sit
+    // stale until the viewer manually reloads.
+    refetchInterval: 15_000,
   });
   const documentTypesQuery = useQuery({
     queryKey: ["document-types"],

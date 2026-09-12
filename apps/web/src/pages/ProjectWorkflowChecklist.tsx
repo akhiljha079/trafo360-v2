@@ -1,4 +1,10 @@
-import { CheckCircleFilled, ClockCircleFilled, ExclamationCircleFilled, UploadOutlined } from "@ant-design/icons";
+import {
+  CheckCircleFilled,
+  ClockCircleFilled,
+  CloseCircleFilled,
+  ExclamationCircleFilled,
+  UploadOutlined,
+} from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Card, Collapse, Input, message, Modal, Progress, Space, Tag, Typography, Upload } from "antd";
 import { useState } from "react";
@@ -36,6 +42,14 @@ const DOC_STATUS_LABEL: Record<string, string> = {
   REJECTED: "Rejected",
 };
 
+// Not shown for NONE - there's no upload yet to put a clock on, the "no
+// document" state is communicated by the Upload button itself.
+const DOC_STATUS_ICON: Record<string, React.ReactNode> = {
+  PENDING: <ClockCircleFilled style={{ color: "#faad14" }} />,
+  APPROVED: <CheckCircleFilled style={{ color: "#52c41a" }} />,
+  REJECTED: <CloseCircleFilled style={{ color: "#ff4d4f" }} />,
+};
+
 export function ProjectWorkflowChecklist({ projectId, hasTemplate }: { projectId: string; hasTemplate: boolean }) {
   const qc = useQueryClient();
   const [overrideTarget, setOverrideTarget] = useState<Requirement | null>(null);
@@ -45,6 +59,11 @@ export function ProjectWorkflowChecklist({ projectId, hasTemplate }: { projectId
   const workflowQuery = useQuery({
     queryKey: ["project-workflow", projectId],
     queryFn: () => api.get<ProjectStage[]>(`/projects/${projectId}/workflow`),
+    // A document uploaded here often gets approved by someone else, in
+    // their own session, sometime later - polling is what makes that
+    // status change actually show up without the uploader having to
+    // remember to hit reload themselves.
+    refetchInterval: 15_000,
   });
 
   function invalidate() {
@@ -75,8 +94,12 @@ export function ProjectWorkflowChecklist({ projectId, hasTemplate }: { projectId
     formData.append("projectDocumentRequirementId", requirement.id);
     formData.append("title", requirement.documentType.name);
     try {
-      await api.upload(`/projects/${projectId}/documents`, formData);
-      message.success(`${requirement.documentType.name} uploaded`);
+      const uploaded = await api.upload<{ status: string }>(`/projects/${projectId}/documents`, formData);
+      message.success(
+        uploaded.status === "UNDER_REVIEW"
+          ? `${requirement.documentType.name} uploaded successfully - awaiting approval`
+          : `${requirement.documentType.name} uploaded and approved`,
+      );
       invalidate();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : "Upload failed");
@@ -178,7 +201,10 @@ export function ProjectWorkflowChecklist({ projectId, hasTemplate }: { projectId
                                     {r.notApplicable ? (
                                       <Tag>N/A</Tag>
                                     ) : (
-                                      <Tag color={r.docStatus === "APPROVED" ? "success" : r.docStatus === "REJECTED" ? "error" : "warning"}>
+                                      <Tag
+                                        icon={DOC_STATUS_ICON[r.docStatus]}
+                                        color={r.docStatus === "APPROVED" ? "success" : r.docStatus === "REJECTED" ? "error" : "warning"}
+                                      >
                                         {DOC_STATUS_LABEL[r.docStatus]}
                                       </Tag>
                                     )}
