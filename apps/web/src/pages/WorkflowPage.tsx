@@ -1,3 +1,4 @@
+import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
@@ -10,19 +11,32 @@ import {
   List,
   message,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Switch,
+  Table,
   Typography,
 } from "antd";
 import { useMemo, useState } from "react";
 import ReactFlow, { Background, Edge, Node, Position } from "reactflow";
 import "reactflow/dist/style.css";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
+import { useAuth } from "../auth/useAuth";
 
 interface DocumentType {
   id: string;
   code: string;
+  name: string;
+  description?: string | null;
+  confidentialityLevelId?: string | null;
+  multipleFilesAllowed?: boolean;
+  versionControlled?: boolean;
+  expiryRequired?: boolean;
+  retentionYears?: number | null;
+}
+interface ConfidentialityLevel {
+  id: string;
   name: string;
 }
 interface Requirement {
@@ -71,6 +85,7 @@ export function WorkflowPage() {
   const [activeStage, setActiveStage] = useState<Stage | null>(null);
   const [templateForm] = Form.useForm();
   const [parentForm] = Form.useForm();
+  const [docTypesOpen, setDocTypesOpen] = useState(false);
 
   const templatesQuery = useQuery({
     queryKey: ["workflow-templates-list"],
@@ -154,6 +169,7 @@ export function WorkflowPage() {
           placeholder="Select a workflow template"
         />
         <Button onClick={() => setCreateTemplateOpen(true)}>Create template</Button>
+        <Button onClick={() => setDocTypesOpen(true)}>Manage Document Types</Button>
         {templateQuery.data && (
           <>
             <Switch
@@ -222,6 +238,7 @@ export function WorkflowPage() {
         onOpenStage={setActiveStage}
       />
       <StageDrawer stage={activeStage} onClose={() => setActiveStage(null)} onChanged={refreshTemplate} />
+      <DocumentTypesDrawer open={docTypesOpen} onClose={() => setDocTypesOpen(false)} />
     </div>
   );
 }
@@ -393,6 +410,145 @@ function StageDrawer({ stage, onClose, onChanged }: { stage: Stage | null; onClo
           </Card>
         </>
       )}
+    </Drawer>
+  );
+}
+
+/** The master list of document types - separate from attaching/detaching a
+ * type to a specific stage (StageDrawer above, which already covers "add/
+ * remove document types to a workflow stage"). This is for the types
+ * themselves: creating a new one when the right one doesn't exist yet,
+ * correcting a name/code, or removing one nothing actually uses. */
+function DocumentTypesDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const canManage = useAuth((s) => s.hasPermission("document_type.manage"));
+  const [editTarget, setEditTarget] = useState<DocumentType | "new" | null>(null);
+  const [form] = Form.useForm();
+
+  const query = useQuery({
+    queryKey: ["document-types"],
+    queryFn: () => api.get<DocumentType[]>("/document-types"),
+    enabled: open,
+  });
+  const confidentialityQuery = useQuery({
+    queryKey: ["confidentiality-levels"],
+    queryFn: () => api.get<ConfidentialityLevel[]>("/confidentiality-levels"),
+    enabled: open,
+  });
+
+  function invalidate() {
+    qc.invalidateQueries({ queryKey: ["document-types"] });
+  }
+
+  function openEdit(record: DocumentType | "new") {
+    setEditTarget(record);
+    form.resetFields();
+    if (record !== "new") form.setFieldsValue(record);
+  }
+
+  async function onSave() {
+    const values = await form.validateFields();
+    try {
+      if (editTarget === "new") {
+        await api.post("/document-types", values);
+        message.success("Document type created");
+      } else if (editTarget) {
+        await api.patch(`/document-types/${editTarget.id}`, values);
+        message.success("Document type updated");
+      }
+      setEditTarget(null);
+      invalidate();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Failed to save document type");
+    }
+  }
+
+  async function onDelete(dt: DocumentType) {
+    try {
+      await api.delete(`/document-types/${dt.id}`);
+      message.success("Document type deleted");
+      invalidate();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : "Delete failed");
+    }
+  }
+
+  return (
+    <Drawer title="Document Types" open={open} onClose={onClose} width={600}>
+      <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+        The master list of document types available across every workflow template. To require a
+        type at a specific stage, use "Documents" on that stage instead - this only manages the
+        types themselves.
+      </Typography.Paragraph>
+      {canManage && (
+        <Button type="primary" onClick={() => openEdit("new")} style={{ marginBottom: 12 }}>
+          Add document type
+        </Button>
+      )}
+      <Table
+        rowKey="id"
+        size="small"
+        loading={query.isLoading}
+        dataSource={query.data ?? []}
+        pagination={false}
+        columns={[
+          { title: "Code", dataIndex: "code" },
+          { title: "Name", dataIndex: "name" },
+          ...(canManage
+            ? [
+                {
+                  title: "",
+                  render: (_: unknown, dt: DocumentType) => (
+                    <Space size="small">
+                      <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(dt)} />
+                      <Popconfirm
+                        title="Delete this document type?"
+                        description="Only possible if no workflow stage or document uses it."
+                        okText="Delete"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={() => onDelete(dt)}
+                      >
+                        <Button size="small" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    </Space>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+
+      <Modal
+        title={editTarget === "new" ? "Add document type" : `Edit ${(editTarget as DocumentType)?.name ?? ""}`}
+        open={!!editTarget}
+        onCancel={() => setEditTarget(null)}
+        onOk={onSave}
+        okText="Save"
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item name="code" label="Code" rules={[{ required: true }]}>
+            <Input placeholder="e.g. GTP_APPROVED" disabled={editTarget !== "new"} />
+          </Form.Item>
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input placeholder="e.g. Approved GTP" />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item name="confidentialityLevelId" label="Default confidentiality level">
+            <Select
+              allowClear
+              options={confidentialityQuery.data?.map((c) => ({ value: c.id, label: c.name }))}
+            />
+          </Form.Item>
+          <Form.Item name="expiryRequired" label="Has an expiry date" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item name="retentionYears" label="Retention (years)">
+            <InputNumber min={1} style={{ width: "100%" }} />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Drawer>
   );
 }

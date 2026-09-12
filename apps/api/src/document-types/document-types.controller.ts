@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from "@nestjs/common";
 import { ConflictException, NotFoundException } from "@nestjs/common";
 import { Auth } from "../common/auth.decorator";
 import { AuditService } from "../common/audit.service";
@@ -60,5 +60,39 @@ export class DocumentTypesController {
       ipAddress: ip,
     });
     return documentType;
+  }
+
+  /** Same FK-safety-net pattern used for project/customer/document deletion:
+   * StageDocumentRequirement.documentTypeId and Document.documentTypeId both
+   * reference this without ON DELETE CASCADE, so a type still used by a
+   * workflow stage or an actual uploaded document refuses to delete rather
+   * than silently orphaning either. */
+  @Delete(":id")
+  @HttpCode(200)
+  @Auth("document_type.manage")
+  async remove(@Param("id") id: string, @CurrentUserId() userId: string, @ClientIp() ip?: string) {
+    const documentType = await this.prisma.documentType.findUnique({ where: { id } });
+    if (!documentType) throw new NotFoundException("Document type not found");
+
+    try {
+      await this.prisma.documentType.delete({ where: { id } });
+    } catch (err) {
+      if ((err as { code?: string }).code === "P2003" || (err as { code?: string }).code === "P2014") {
+        throw new ConflictException(
+          "This document type is still used by a workflow stage or an uploaded document - remove those references first.",
+        );
+      }
+      throw err;
+    }
+
+    await this.audit.log({
+      userId,
+      action: "DOCUMENT_TYPE_DELETED",
+      objectType: "DocumentType",
+      objectId: id,
+      oldValue: { code: documentType.code, name: documentType.name },
+      ipAddress: ip,
+    });
+    return { ok: true };
   }
 }
