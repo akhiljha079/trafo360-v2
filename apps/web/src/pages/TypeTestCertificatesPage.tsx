@@ -40,6 +40,7 @@ export function TypeTestCertificatesPage() {
   const [renewFile, setRenewFile] = useState<File | null>(null);
   const [editTarget, setEditTarget] = useState<CertificateRow | null>(null);
   const [editForm] = Form.useForm();
+  const [busy, setBusy] = useState<"create" | "renew" | "edit" | null>(null);
 
   const query = useQuery({
     queryKey: ["type-test-certificates"],
@@ -62,6 +63,7 @@ export function TypeTestCertificatesPage() {
     formData.append("title", values.title);
     if (values.certificateNo) formData.append("certificateNo", values.certificateNo);
     formData.append("expiryDate", values.expiryDate.toISOString());
+    setBusy("create");
     try {
       await api.upload("/type-test-certificates", formData);
       message.success("Certificate uploaded");
@@ -71,12 +73,15 @@ export function TypeTestCertificatesPage() {
       invalidate();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : "Upload failed");
+    } finally {
+      setBusy(null);
     }
   }
 
   async function onEdit() {
     if (!editTarget) return;
     const values = await editForm.validateFields();
+    setBusy("edit");
     try {
       await api.patch(`/type-test-certificates/${editTarget.id}`, values);
       message.success("Certificate updated");
@@ -85,6 +90,8 @@ export function TypeTestCertificatesPage() {
       invalidate();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : "Update failed");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -109,6 +116,7 @@ export function TypeTestCertificatesPage() {
     formData.append("file", renewFile);
     formData.append("expiryDate", values.expiryDate.toISOString());
     if (values.certificateNo) formData.append("certificateNo", values.certificateNo);
+    setBusy("renew");
     try {
       await api.upload(`/type-test-certificates/${renewTarget.id}/renew`, formData);
       message.success("Certificate renewed");
@@ -118,6 +126,8 @@ export function TypeTestCertificatesPage() {
       invalidate();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : "Renewal failed");
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -217,6 +227,7 @@ export function TypeTestCertificatesPage() {
         title="Upload Type Test Certificate"
         open={createOpen}
         onOk={onCreate}
+        confirmLoading={busy === "create"}
         onCancel={() => {
           setCreateOpen(false);
           createForm.resetFields();
@@ -256,6 +267,7 @@ export function TypeTestCertificatesPage() {
         title={`Renew Certificate - ${renewTarget?.title ?? ""}`}
         open={!!renewTarget}
         onOk={onRenew}
+        confirmLoading={busy === "renew"}
         onCancel={() => {
           setRenewTarget(null);
           renewForm.resetFields();
@@ -289,6 +301,7 @@ export function TypeTestCertificatesPage() {
         title={`Edit Certificate - ${editTarget?.title ?? ""}`}
         open={!!editTarget}
         onOk={onEdit}
+        confirmLoading={busy === "edit"}
         onCancel={() => {
           setEditTarget(null);
           editForm.resetFields();

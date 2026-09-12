@@ -55,6 +55,7 @@ export function ProjectWorkflowChecklist({ projectId, hasTemplate }: { projectId
   const [overrideTarget, setOverrideTarget] = useState<Requirement | null>(null);
   const [reason, setReason] = useState("");
   const [openDocumentId, setOpenDocumentId] = useState<string | null>(null);
+  const [uploadingRequirementId, setUploadingRequirementId] = useState<string | null>(null);
 
   const workflowQuery = useQuery({
     queryKey: ["project-workflow", projectId],
@@ -88,6 +89,7 @@ export function ProjectWorkflowChecklist({ projectId, hasTemplate }: { projectId
   }
 
   async function uploadForRequirement(requirement: Requirement, file: File) {
+    setUploadingRequirementId(requirement.id);
     const formData = new FormData();
     formData.append("file", file);
     formData.append("documentTypeId", requirement.documentType.id);
@@ -103,6 +105,8 @@ export function ProjectWorkflowChecklist({ projectId, hasTemplate }: { projectId
       invalidate();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : "Upload failed");
+    } finally {
+      setUploadingRequirementId(null);
     }
     return false;
   }
@@ -209,8 +213,17 @@ export function ProjectWorkflowChecklist({ projectId, hasTemplate }: { projectId
                                       </Tag>
                                     )}
                                     {!r.notApplicable && !r.documentId && (
-                                      <Upload showUploadList={false} beforeUpload={(file) => uploadForRequirement(r, file)}>
-                                        <Button type="link" size="small" icon={<UploadOutlined />}>
+                                      <Upload
+                                        showUploadList={false}
+                                        disabled={uploadingRequirementId === r.id}
+                                        beforeUpload={(file) => uploadForRequirement(r, file)}
+                                      >
+                                        <Button
+                                          type="link"
+                                          size="small"
+                                          icon={<UploadOutlined />}
+                                          loading={uploadingRequirementId === r.id}
+                                        >
                                           Upload
                                         </Button>
                                       </Upload>

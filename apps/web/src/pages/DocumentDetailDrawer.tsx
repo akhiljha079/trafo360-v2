@@ -59,6 +59,7 @@ export function DocumentDetailDrawer({
   const qc = useQueryClient();
   const [comment, setComment] = useState<Record<string, string>>({});
   const [editOpen, setEditOpen] = useState(false);
+  const [uploadingVersion, setUploadingVersion] = useState(false);
   const [editForm] = Form.useForm();
   const canEdit = useAuth((s) => s.hasPermission("document.edit"));
   const canDelete = useAuth((s) => s.hasPermission("document.delete"));
@@ -123,14 +124,19 @@ export function DocumentDetailDrawer({
   }
 
   async function uploadNewVersion(file: File) {
+    setUploadingVersion(true);
     const formData = new FormData();
     formData.append("file", file);
     try {
-      await api.upload(`/documents/${documentId}/versions`, formData);
-      message.success("New version uploaded");
+      const uploaded = await api.upload<{ status: string }>(`/documents/${documentId}/versions`, formData);
+      message.success(
+        uploaded.status === "UNDER_REVIEW" ? "New version uploaded - awaiting approval" : "New version uploaded and approved",
+      );
       invalidate();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : "Upload failed");
+    } finally {
+      setUploadingVersion(false);
     }
     return false; // prevent antd Upload's own auto-submit
   }
@@ -144,8 +150,10 @@ export function DocumentDetailDrawer({
           </Tag>
 
           <Space style={{ marginBottom: 16 }} wrap>
-            <Upload beforeUpload={uploadNewVersion} showUploadList={false}>
-              <Button icon={<UploadOutlined />}>Upload new version</Button>
+            <Upload beforeUpload={uploadNewVersion} showUploadList={false} disabled={uploadingVersion}>
+              <Button icon={<UploadOutlined />} loading={uploadingVersion}>
+                Upload new version
+              </Button>
             </Upload>
             {canEdit && (
               <Button
