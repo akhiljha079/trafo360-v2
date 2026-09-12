@@ -180,7 +180,7 @@ export class DocumentsService {
   async upload(projectId: string, dto: UploadDocumentDto, file: Express.Multer.File, userId: string, ip?: string) {
     this.validateFile(file);
 
-    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    const project = await this.prisma.project.findUnique({ where: { id: projectId }, include: { customer: true } });
     if (!project) throw new NotFoundException("Project not found");
 
     let documentId = dto.documentId;
@@ -223,20 +223,27 @@ export class DocumentsService {
     const versionNo = versionCount + 1;
 
     const safeName = this.sanitizeFileName(file.originalname);
-    // Human-readable on purpose: someone browsing the NFS share directly
-    // (not just through the app) needs to be able to tell what a folder is
-    // without cross-referencing the database - projectNo/type/title
-    // instead of raw IDs. versionNo already guarantees no filename
-    // collision within a document's own folder even if the same original
-    // filename gets re-uploaded for a later version, so no random suffix
-    // is needed on the file itself; the short id suffix on the document
-    // folder only exists to disambiguate two different documents that
-    // happen to share both a type and a title.
+    // Human-readable on purpose, organized the way the business actually
+    // thinks about its work: transformer type -> rating -> customer, since
+    // type-test certificates are reused across whichever projects build
+    // that type/rating (see TypeTestCertificatesService) and staff
+    // navigating the Synology share directly think in those terms first.
+    // projectNo is still its own folder underneath customer - two separate
+    // orders from the same customer for the identical type+rating are
+    // common (repeat business) and must not have their documents mixed
+    // into one undifferentiated folder. versionNo already guarantees no
+    // filename collision within a document's own folder even if the same
+    // original filename gets re-uploaded for a later version, so no random
+    // suffix is needed on the file itself; the short id suffix on the
+    // document folder only exists to disambiguate two documents in the
+    // same project that happen to share both a type and a title.
     const relativePath = path.posix.join(
       "projects",
+      slugify(project.transformerType || "unspecified-type"),
+      slugify(project.rating || "unspecified-rating"),
+      `${project.customer.code}-${slugify(project.customer.name)}`,
       project.projectNo,
-      slugify(documentTypeName),
-      `${slugify(documentTitle)}-${documentId.slice(-6)}`,
+      `${slugify(documentTypeName)}-${slugify(documentTitle)}-${documentId.slice(-6)}`,
       `v${versionNo}-${safeName}`,
     );
     const written = await this.storage.write(file.buffer, relativePath);
