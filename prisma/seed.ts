@@ -336,6 +336,32 @@ async function main() {
     }
   }
 
+  console.log("Seeding default notification templates...");
+  const NOTIFICATION_TEMPLATES: { eventKey: string; channel: string; subject: string; body: string }[] = [
+    {
+      eventKey: "STAGE_DOCUMENT_UPLOADED",
+      channel: "EMAIL",
+      subject: "Document uploaded: {{documentTitle}} — {{projectNo}}",
+      body: `<p><strong>{{uploadedByName}}</strong> uploaded <strong>{{documentTitle}}</strong> for stage <strong>{{stageName}}</strong>.</p>
+<p>Project: {{projectNo}} — {{projectName}}<br/>Customer: {{customerName}}</p>`,
+    },
+    {
+      eventKey: "PROJECT_CREATED_DEPARTMENT_NOTICE",
+      channel: "EMAIL",
+      subject: "New project {{projectNo}} — please send your documents",
+      body: `<p>A new project has been created and needs your department's documents.</p>
+<p>Project: {{projectNo}} — {{projectName}}<br/>Customer: {{customerName}}</p>
+<p>Please send the relevant documents to <strong>{{documentCoordinatorName}}</strong> as soon as they're ready.</p>`,
+    },
+  ];
+  for (const t of NOTIFICATION_TEMPLATES) {
+    await prisma.notificationTemplate.upsert({
+      where: { eventKey_channel: { eventKey: t.eventKey, channel: t.channel } },
+      update: { subject: t.subject, body: t.body },
+      create: t,
+    });
+  }
+
   console.log(`Seed complete: ${CONFIDENTIALITY_LEVELS.length} confidentiality levels, ${PERMISSIONS.length} permissions, ${Object.keys(ROLE_PERMISSIONS).length} roles, ${DEPARTMENTS.length} departments, 1 bootstrap admin, 1 workflow template with ${WORKFLOW.length} parent stages and ${docTypeCount} document types.`);
 }
 

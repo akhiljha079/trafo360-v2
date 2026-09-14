@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import * as path from "node:path";
 import { NOTIFICATION_EVENTS, slugify } from "@trafo360/shared";
 import { AuditService } from "../common/audit.service";
@@ -45,6 +45,8 @@ const documentInclude = {
 
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -309,9 +311,61 @@ export class DocumentsService {
     if (projectDocumentRequirementId) {
       const pdr = await this.prisma.projectDocumentRequirement.findUnique({ where: { id: projectDocumentRequirementId } });
       if (pdr) await this.workflow.recomputeProjectStageStatus(pdr.projectStageId, userId, "Document uploaded");
+      await this.notifyStageUpload(projectDocumentRequirementId, documentTitle, project, userId);
     }
 
     return this.get(documentId, userId);
+  }
+
+  /** "Notify the concerned person (e.g. Sales HOD for a Sales document)
+   * plus admin whenever a document upload completes a stage requirement" -
+   * only fires for uploads actually tied to a stage requirement (ad-hoc
+   * uploads with no projectDocumentRequirementId have no stage/department
+   * to resolve at all). The "concerned person" is the uploaded-for stage's
+   * responsibleDepartment.head (Administration -> Departments), not a
+   * separate contact list - reuses the department-head field that already
+   * existed for this purpose. Never lets a notification failure fail the
+   * upload itself; this is best-effort, same spirit as WhatsApp's send(). */
+  private async notifyStageUpload(
+    projectDocumentRequirementId: string,
+    documentTitle: string,
+    project: { projectNo: string; name: string; customer: { name: string } },
+    uploadedById: string,
+  ): Promise<void> {
+    try {
+      const pdr = await this.prisma.projectDocumentRequirement.findUnique({
+        where: { id: projectDocumentRequirementId },
+        include: {
+          stageDocumentRequirement: {
+            include: { stage: { include: { responsibleDepartment: { include: { head: true } } } } },
+          },
+        },
+      });
+      const stage = pdr?.stageDocumentRequirement.stage;
+      const uploadedBy = await this.prisma.user.findUnique({ where: { id: uploadedById } });
+
+      const variables = {
+        documentTitle,
+        stageName: stage?.name ?? "",
+        projectNo: project.projectNo,
+        projectName: project.name,
+        customerName: project.customer.name,
+        uploadedByName: uploadedBy?.name ?? "",
+      };
+
+      const recipientIds = new Set<string>();
+      if (stage?.responsibleDepartment?.head) recipientIds.add(stage.responsibleDepartment.head.id);
+      const admins = await this.prisma.user.findMany({
+        where: { role: { name: "System Administrator" }, status: "ACTIVE" },
+      });
+      for (const admin of admins) recipientIds.add(admin.id);
+
+      for (const recipientId of recipientIds) {
+        await this.notifications.notify(NOTIFICATION_EVENTS.STAGE_DOCUMENT_UPLOADED, recipientId, variables);
+      }
+    } catch (err) {
+      this.logger.warn(`STAGE_DOCUMENT_UPLOADED notification failed (upload itself still succeeded): ${(err as Error).message}`);
+    }
   }
 
   /** The single place a version actually becomes "current": marks whatever

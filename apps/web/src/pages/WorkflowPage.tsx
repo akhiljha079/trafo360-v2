@@ -53,7 +53,13 @@ interface Stage {
   description: string | null;
   sortOrder: number;
   slaHours: number | null;
+  responsibleDepartmentId: string | null;
+  responsibleDepartment: { id: string; name: string } | null;
   documentRequirements: Requirement[];
+}
+interface DepartmentOption {
+  id: string;
+  name: string;
 }
 interface ParentStage {
   id: string;
@@ -274,20 +280,35 @@ function ParentStageDrawer({
   onChanged: () => void;
   onOpenStage: (stage: Stage) => void;
 }) {
-  const [addOpen, setAddOpen] = useState(false);
+  const [editingStage, setEditingStage] = useState<Stage | "new" | null>(null);
   const [form] = Form.useForm();
+  const departmentsQuery = useQuery({
+    queryKey: ["departments-for-stage"],
+    queryFn: () => api.get<DepartmentOption[]>("/departments"),
+    enabled: !!editingStage,
+  });
 
-  async function addStage() {
-    if (!parentStage) return;
+  function openStageForm(stage: Stage | "new") {
+    setEditingStage(stage);
+    form.resetFields();
+    if (stage !== "new") form.setFieldsValue(stage);
+  }
+
+  async function saveStage() {
+    if (!parentStage || !editingStage) return;
     const values = await form.validateFields();
     try {
-      await api.post(`/parent-stages/${parentStage.id}/stages`, values);
-      message.success("Stage added");
-      setAddOpen(false);
-      form.resetFields();
+      if (editingStage === "new") {
+        await api.post(`/parent-stages/${parentStage.id}/stages`, values);
+        message.success("Stage added");
+      } else {
+        await api.patch(`/stages/${editingStage.id}`, values);
+        message.success("Stage updated");
+      }
+      setEditingStage(null);
       onChanged();
     } catch (err) {
-      message.error(err instanceof ApiError ? err.message : "Failed to add stage");
+      message.error(err instanceof ApiError ? err.message : "Failed to save stage");
     }
   }
 
@@ -331,6 +352,9 @@ function ParentStageDrawer({
                   <Button key="down" size="small" onClick={() => move(stage, 1)}>
                     ↓
                   </Button>,
+                  <Button key="edit" size="small" onClick={() => openStageForm(stage)}>
+                    Edit
+                  </Button>,
                   <Button key="open" size="small" onClick={() => onOpenStage(stage)}>
                     Documents ({stage.documentRequirements.length})
                   </Button>,
@@ -339,14 +363,30 @@ function ParentStageDrawer({
                   </Button>,
                 ]}
               >
-                <List.Item.Meta title={`${stage.code} — ${stage.name}`} description={stage.description} />
+                <List.Item.Meta
+                  title={`${stage.code} — ${stage.name}`}
+                  description={
+                    <>
+                      {stage.description}
+                      {stage.responsibleDepartment && (
+                        <div style={{ fontSize: 12 }}>Responsible: {stage.responsibleDepartment.name}</div>
+                      )}
+                    </>
+                  }
+                />
               </List.Item>
             )}
           />
-          <Button block onClick={() => setAddOpen(true)} style={{ marginTop: 12 }}>
+          <Button block onClick={() => openStageForm("new")} style={{ marginTop: 12 }}>
             Add stage
           </Button>
-          <Modal title="Add stage" open={addOpen} onCancel={() => setAddOpen(false)} onOk={addStage} okText="Add">
+          <Modal
+            title={editingStage === "new" ? "Add stage" : `Edit ${(editingStage as Stage)?.name ?? ""}`}
+            open={!!editingStage}
+            onCancel={() => setEditingStage(null)}
+            onOk={saveStage}
+            okText="Save"
+          >
             <Form form={form} layout="vertical">
               <Form.Item name="code" label="Code" rules={[{ required: true }]}>
                 <Input />
@@ -356,6 +396,16 @@ function ParentStageDrawer({
               </Form.Item>
               <Form.Item name="description" label="Description">
                 <Input.TextArea rows={2} />
+              </Form.Item>
+              <Form.Item
+                name="responsibleDepartmentId"
+                label="Responsible department"
+                extra="Its head gets notified whenever a document is uploaded for this stage."
+              >
+                <Select
+                  allowClear
+                  options={departmentsQuery.data?.map((d) => ({ value: d.id, label: d.name }))}
+                />
               </Form.Item>
               <Form.Item name="slaHours" label="SLA (hours)">
                 <InputNumber min={1} style={{ width: "100%" }} />

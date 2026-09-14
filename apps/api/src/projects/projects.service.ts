@@ -1,6 +1,8 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { NOTIFICATION_EVENTS } from "@trafo360/shared";
 import { AuditService } from "../common/audit.service";
 import { PermissionsService } from "../common/permissions.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { WorkflowService } from "../workflow/workflow.service";
 import { AddProjectMemberDto } from "./dto/add-member.dto";
@@ -26,11 +28,14 @@ const projectListInclude = {
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly workflow: WorkflowService,
     private readonly permissions: PermissionsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Atomic per-year sequence via Postgres's ON CONFLICT, so concurrent
@@ -120,7 +125,46 @@ export class ProjectsService {
     if (dto.workflowTemplateId) {
       await this.workflow.instantiateForProject(project.id, actorUserId, ip);
     }
+
+    await this.notifyDepartmentsOfNewProject(project);
+
     return project;
+  }
+
+  /** "Email every department's concerned person when a new project is
+   * created, so they know to send their documents to the Document
+   * Coordinator" - one notification per department that actually has a
+   * head set (Administration -> Departments), carrying project/customer
+   * details so the recipient knows which order this is for and who to
+   * send documents to. Best-effort: a notification failure must never
+   * fail project creation itself. */
+  private async notifyDepartmentsOfNewProject(project: {
+    id: string;
+    projectNo: string;
+    name: string;
+    customer: { name: string };
+    documentCoordinator: { name: string } | null;
+  }): Promise<void> {
+    try {
+      const departments = await this.prisma.department.findMany({
+        where: { active: true, headId: { not: null } },
+        include: { head: true },
+      });
+      if (departments.length === 0) return;
+
+      const variables = {
+        projectNo: project.projectNo,
+        projectName: project.name,
+        customerName: project.customer.name,
+        documentCoordinatorName: project.documentCoordinator?.name ?? "the Document Coordinator",
+      };
+      for (const dept of departments) {
+        if (!dept.head) continue;
+        await this.notifications.notify(NOTIFICATION_EVENTS.PROJECT_CREATED_DEPARTMENT_NOTICE, dept.head.id, variables);
+      }
+    } catch (err) {
+      this.logger.warn(`PROJECT_CREATED_DEPARTMENT_NOTICE failed (project creation itself still succeeded): ${(err as Error).message}`);
+    }
   }
 
   /** Edit/delete are restricted to the System Administrator role
