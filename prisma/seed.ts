@@ -49,16 +49,16 @@ const CONFIDENTIALITY_LEVELS = [
 // Workflow template: "Transformer Manufacturing - Standard" (spec §13/§16-18)
 // ---------------------------------------------------------------------------
 type DocSeed = { code: string; name: string; mandatory?: boolean };
-type StageSeed = { code: string; name: string; docs: DocSeed[] };
+type StageSeed = { code: string; name: string; docs: DocSeed[]; department?: string };
 type ParentStageSeed = { code: string; name: string; stages: StageSeed[] };
 
 const WORKFLOW: ParentStageSeed[] = [
   {
     code: "SALES", name: "Sales", stages: [
-      { code: "S1", name: "Enquiry / Requirement Review", docs: [] },
-      { code: "S2", name: "Quotation / Offer", docs: [{ code: "QUOTATION", name: "Quotation / Offer" }] },
+      { code: "S1", name: "Enquiry / Requirement Review", docs: [], department: "SALES" },
+      { code: "S2", name: "Quotation / Offer", docs: [{ code: "QUOTATION", name: "Quotation / Offer" }], department: "SALES" },
       {
-        code: "S3", name: "Order / Contract Review", docs: [
+        code: "S3", name: "Order / Contract Review", department: "SALES", docs: [
           { code: "CUST_PO", name: "Customer PO" },
           { code: "CUST_TECH_SPEC", name: "Customer Technical Specification" },
           { code: "CUST_ELEC_DWG", name: "Customer Electrical Drawing" },
@@ -70,10 +70,10 @@ const WORKFLOW: ParentStageSeed[] = [
   },
   {
     code: "ENGINEERING", name: "Engineering", stages: [
-      { code: "E1", name: "Design & Engineering", docs: [{ code: "DESIGN_CALC", name: "Design Calculation" }] },
-      { code: "E2", name: "GTP Preparation & Approval", docs: [{ code: "APPROVED_GTP", name: "Approved GTP" }] },
+      { code: "E1", name: "Design & Engineering", docs: [{ code: "DESIGN_CALC", name: "Design Calculation" }], department: "ENG" },
+      { code: "E2", name: "GTP Preparation & Approval", docs: [{ code: "APPROVED_GTP", name: "Approved GTP" }], department: "ENG" },
       {
-        code: "E3", name: "Design Release", docs: [
+        code: "E3", name: "Design Release", department: "ENG", docs: [
           { code: "APPROVED_DESIGN", name: "Approved Design" },
           { code: "ELEC_DWG", name: "Electrical Drawing" },
           { code: "MECH_TANK_DWG", name: "Mechanical / Tank Drawing" },
@@ -84,13 +84,13 @@ const WORKFLOW: ParentStageSeed[] = [
   {
     code: "PROCUREMENT", name: "Procurement", stages: [
       {
-        code: "P1", name: "Material Requirement Planning", docs: [
+        code: "P1", name: "Material Requirement Planning", department: "PROC", docs: [
           { code: "MRP", name: "MRP" }, { code: "RMC", name: "RMC" }, { code: "BOM", name: "BOM" },
         ],
       },
-      { code: "P2", name: "Purchase Planning", docs: [{ code: "PURCHASE_REQ", name: "Purchase Requisition" }] },
+      { code: "P2", name: "Purchase Planning", docs: [{ code: "PURCHASE_REQ", name: "Purchase Requisition" }], department: "PROC" },
       {
-        code: "P3", name: "Material Procurement", docs: [
+        code: "P3", name: "Material Procurement", department: "PROC", docs: [
           { code: "SUPPLIER_PO", name: "Supplier PO" }, { code: "JOB_ORDER", name: "Job Order" },
         ],
       },
@@ -99,44 +99,44 @@ const WORKFLOW: ParentStageSeed[] = [
   {
     code: "QUALITY_INCOMING", name: "Quality - Incoming", stages: [
       {
-        code: "QI1", name: "Incoming Material Inspection", docs: [
+        code: "QI1", name: "Incoming Material Inspection", department: "IQC", docs: [
           { code: "INCOMING_QC", name: "Incoming Material QC" },
           { code: "MTC", name: "Material Test Certificate" },
           { code: "SUPPLIER_CERT", name: "Supplier Certificate" },
         ],
       },
-      { code: "QI2", name: "Material Traceability", docs: [{ code: "TRACEABILITY", name: "Heat / Batch / Lot Traceability" }] },
+      { code: "QI2", name: "Material Traceability", docs: [{ code: "TRACEABILITY", name: "Heat / Batch / Lot Traceability" }], department: "IQC" },
     ],
   },
   {
     code: "MANUFACTURING", name: "Manufacturing", stages: [
-      { code: "MF1", name: "Core Manufacturing", docs: [{ code: "CORE_MFG", name: "Core Manufacturing Record" }] },
+      { code: "MF1", name: "Core Manufacturing", docs: [{ code: "CORE_MFG", name: "Core Manufacturing Record" }], department: "MFG" },
       {
-        code: "MF2", name: "HV & LV Winding", docs: [
+        code: "MF2", name: "HV & LV Winding", department: "MFG", docs: [
           { code: "YELLOW_CARD", name: "Yellow Card / Job Card" },
           { code: "HV_WINDING_QC", name: "HV Winding QC" },
           { code: "LV_WINDING_QC", name: "LV Winding QC" },
           { code: "WINDING_DIM", name: "Winding Dimension Report (ID/OD/Axial Length/Turns/Conductor/Insulation)" },
         ],
       },
-      { code: "MF3", name: "Active Part Assembly", docs: [{ code: "ACTIVE_PART", name: "Active Part Assembly Report" }] },
+      { code: "MF3", name: "Active Part Assembly", docs: [{ code: "ACTIVE_PART", name: "Active Part Assembly Report" }], department: "MFG" },
       {
-        code: "MF4", name: "Tank Fabrication", docs: [
+        code: "MF4", name: "Tank Fabrication", department: "MFG", docs: [
           { code: "TANK_FAB", name: "Tank Fabrication Report" },
           { code: "TANK_INSPECTION", name: "Tank Inspection" },
           { code: "TANK_LEAK_TEST", name: "Tank Leak Test" },
         ],
       },
-      { code: "MF5", name: "Tank Testing & Painting", docs: [{ code: "PAINTING_DFT", name: "Painting / DFT Record" }] },
+      { code: "MF5", name: "Tank Testing & Painting", docs: [{ code: "PAINTING_DFT", name: "Painting / DFT Record" }], department: "MFG" },
       {
-        code: "MF6", name: "Drying & Tanking", docs: [
+        code: "MF6", name: "Drying & Tanking", department: "MFG", docs: [
           { code: "DRYING_RECORD", name: "Drying Record" },
           { code: "TANKING_RECORD", name: "Tanking Record" },
           { code: "PSR", name: "PSR" },
         ],
       },
       {
-        code: "MF7", name: "Oil Filling & Final Assembly", docs: [
+        code: "MF7", name: "Oil Filling & Final Assembly", department: "MFG", docs: [
           { code: "OIL_FILLING", name: "Oil Filling Record" },
           { code: "OIL_TEST", name: "Oil Test Report" },
         ],
@@ -146,20 +146,20 @@ const WORKFLOW: ParentStageSeed[] = [
   {
     code: "QUALITY_IN_PROCESS", name: "Quality - In Process", stages: [
       {
-        code: "QP1", name: "In-Process Inspection", docs: [
+        code: "QP1", name: "In-Process Inspection", department: "IPQC", docs: [
           { code: "STAGE_INSPECTION", name: "Stage Inspection Report (Winding / Core Assembly / Tank with Accessories / PSR / Tanking)" },
         ],
       },
-      { code: "QP2", name: "NCR Resolution", docs: [{ code: "NCR", name: "NCR / Corrective Action", mandatory: false }] },
+      { code: "QP2", name: "NCR Resolution", docs: [{ code: "NCR", name: "NCR / Corrective Action", mandatory: false }], department: "IPQC" },
     ],
   },
   {
     code: "FINAL_TESTING_QA", name: "Final Testing & QA", stages: [
-      { code: "FT1", name: "Internal Testing", docs: [{ code: "INTERNAL_TEST", name: "Internal Testing Report" }] },
-      { code: "FT2", name: "Routine Testing", docs: [{ code: "ROUTINE_TEST", name: "Routine Test Report" }] },
-      { code: "FT3", name: "Final Inspection", docs: [{ code: "FINAL_INSPECTION", name: "Final Inspection Report" }] },
+      { code: "FT1", name: "Internal Testing", docs: [{ code: "INTERNAL_TEST", name: "Internal Testing Report" }], department: "TEST" },
+      { code: "FT2", name: "Routine Testing", docs: [{ code: "ROUTINE_TEST", name: "Routine Test Report" }], department: "TEST" },
+      { code: "FT3", name: "Final Inspection", docs: [{ code: "FINAL_INSPECTION", name: "Final Inspection Report" }], department: "QA" },
       {
-        code: "FT4", name: "QA Release", docs: [
+        code: "FT4", name: "QA Release", department: "QA", docs: [
           { code: "QA_RELEASE", name: "QA Release" },
           { code: "CERT_CONFORMITY", name: "Certificate of Conformity" },
         ],
@@ -169,26 +169,26 @@ const WORKFLOW: ParentStageSeed[] = [
   {
     code: "DISPATCH", name: "Dispatch", stages: [
       {
-        code: "D1", name: "Dispatch Clearance", docs: [
+        code: "D1", name: "Dispatch Clearance", department: "DISPATCH", docs: [
           { code: "DISPATCH_INSTR", name: "Dispatch Instruction Report" },
           { code: "DISPATCH_CLEARANCE", name: "Dispatch Clearance" },
           { code: "PACKING_INSPECTION", name: "Packing Inspection" },
         ],
       },
       {
-        code: "D2", name: "Commercial Documentation", docs: [
+        code: "D2", name: "Commercial Documentation", department: "COMM", docs: [
           { code: "INVOICE", name: "Invoice" },
           { code: "EWAY_BILL", name: "E-Way Bill" },
         ],
       },
       {
-        code: "D3", name: "Packing & Logistics", docs: [
+        code: "D3", name: "Packing & Logistics", department: "DISPATCH", docs: [
           { code: "PACKING_LIST", name: "Packing List" },
           { code: "LR_GR", name: "LR / GR" },
         ],
       },
       {
-        code: "D4", name: "Warranty / Guarantee Documentation", docs: [
+        code: "D4", name: "Warranty / Guarantee Documentation", department: "DISPATCH", docs: [
           { code: "WARRANTY_CERT", name: "Warranty Certificate" },
           { code: "GUARANTEE_CERT", name: "Guarantee Certificate" },
         ],
@@ -198,7 +198,7 @@ const WORKFLOW: ParentStageSeed[] = [
   {
     code: "EXPORT", name: "Export", stages: [
       {
-        code: "EX1", name: "Export Documentation", docs: [
+        code: "EX1", name: "Export Documentation", department: "EXPORT", docs: [
           { code: "EXP_COMM_INVOICE", name: "Commercial Invoice", mandatory: false },
           { code: "EXP_PACKING_LIST", name: "Packing List (Export)", mandatory: false },
           { code: "EXP_SHIPPING_BILL", name: "Shipping Bill", mandatory: false },
@@ -212,8 +212,8 @@ const WORKFLOW: ParentStageSeed[] = [
   },
   {
     code: "PROJECT_CLOSURE", name: "Project Closure", stages: [
-      { code: "PC1", name: "Project File Compilation", docs: [{ code: "PROJECT_DOSSIER", name: "Project Dossier / Document Register" }] },
-      { code: "PC2", name: "Document Handover & Closure", docs: [{ code: "HANDOVER_CERT", name: "Document Handover Certificate" }] },
+      { code: "PC1", name: "Project File Compilation", docs: [{ code: "PROJECT_DOSSIER", name: "Project Dossier / Document Register" }], department: "DOCCTRL" },
+      { code: "PC2", name: "Document Handover & Closure", docs: [{ code: "HANDOVER_CERT", name: "Document Handover Certificate" }], department: "DOCCTRL" },
     ],
   },
 ];
@@ -271,8 +271,10 @@ async function main() {
   }
 
   console.log("Seeding departments...");
+  const departmentIds = new Map<string, string>();
   for (const dept of DEPARTMENTS) {
-    await prisma.department.upsert({ where: { code: dept.code }, update: { name: dept.name }, create: dept });
+    const row = await prisma.department.upsert({ where: { code: dept.code }, update: { name: dept.name }, create: dept });
+    departmentIds.set(dept.code, row.id);
   }
 
   console.log("Seeding bootstrap local administrator...");
@@ -314,10 +316,17 @@ async function main() {
     let stageSortOrder = 0;
     for (const stageSeed of parent.stages) {
       stageSortOrder += 1;
+      const responsibleDepartmentId = stageSeed.department ? departmentIds.get(stageSeed.department) : undefined;
       const stage = await prisma.stage.upsert({
         where: { parentStageId_code: { parentStageId: parentStage.id, code: stageSeed.code } },
-        update: { name: stageSeed.name, sortOrder: stageSortOrder },
-        create: { parentStageId: parentStage.id, code: stageSeed.code, name: stageSeed.name, sortOrder: stageSortOrder },
+        update: { name: stageSeed.name, sortOrder: stageSortOrder, responsibleDepartmentId },
+        create: {
+          parentStageId: parentStage.id,
+          code: stageSeed.code,
+          name: stageSeed.name,
+          sortOrder: stageSortOrder,
+          responsibleDepartmentId,
+        },
       });
 
       for (const doc of stageSeed.docs) {
