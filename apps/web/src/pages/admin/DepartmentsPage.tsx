@@ -65,6 +65,7 @@ export function DepartmentsPage() {
         rowKey="id"
         loading={departmentsQuery.isLoading}
         dataSource={departmentsQuery.data ?? []}
+        pagination={false}
         onRow={(record) => ({ onClick: () => openEdit(record), style: { cursor: "pointer" } })}
         columns={[
           { title: "Code", dataIndex: "code" },
