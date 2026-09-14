@@ -135,9 +135,13 @@ export class ProjectsService {
    * created, so they know to send their documents to the Document
    * Coordinator" - one notification per department that actually has a
    * head set (Administration -> Departments), carrying project/customer
-   * details so the recipient knows which order this is for and who to
-   * send documents to. Best-effort: a notification failure must never
-   * fail project creation itself. */
+   * details plus the actual document names required from that specific
+   * department (from this project's own instantiated checklist, not the
+   * raw template - so a project-level override that marked something Not
+   * Applicable doesn't get listed as required). No workflow template
+   * assigned (or nothing routed to that department) means an empty list,
+   * not an error. Best-effort: a notification failure must never fail
+   * project creation itself. */
   private async notifyDepartmentsOfNewProject(project: {
     id: string;
     projectNo: string;
@@ -152,15 +156,32 @@ export class ProjectsService {
       });
       if (departments.length === 0) return;
 
-      const variables = {
-        projectNo: project.projectNo,
-        projectName: project.name,
-        customerName: project.customer.name,
-        documentCoordinatorName: project.documentCoordinator?.name ?? "the Document Coordinator",
-      };
+      const requirements = await this.prisma.projectDocumentRequirement.findMany({
+        where: { projectStage: { projectId: project.id }, notApplicable: false },
+        include: {
+          projectStage: { include: { stage: true } },
+          stageDocumentRequirement: { include: { documentType: true } },
+        },
+      });
+      const docNamesByDepartmentId = new Map<string, string[]>();
+      for (const req of requirements) {
+        const deptId = req.projectStage.stage.responsibleDepartmentId;
+        if (!deptId) continue;
+        const names = docNamesByDepartmentId.get(deptId) ?? [];
+        names.push(req.stageDocumentRequirement.documentType.name);
+        docNamesByDepartmentId.set(deptId, names);
+      }
+
       for (const dept of departments) {
         if (!dept.head) continue;
-        await this.notifications.notify(NOTIFICATION_EVENTS.PROJECT_CREATED_DEPARTMENT_NOTICE, dept.head.id, variables);
+        const docNames = docNamesByDepartmentId.get(dept.id) ?? [];
+        await this.notifications.notify(NOTIFICATION_EVENTS.PROJECT_CREATED_DEPARTMENT_NOTICE, dept.head.id, {
+          projectNo: project.projectNo,
+          projectName: project.name,
+          customerName: project.customer.name,
+          documentCoordinatorName: project.documentCoordinator?.name ?? "the Document Coordinator",
+          documentList: docNames.length > 0 ? docNames.join(", ") : "No specific documents assigned to your department yet",
+        });
       }
     } catch (err) {
       this.logger.warn(`PROJECT_CREATED_DEPARTMENT_NOTICE failed (project creation itself still succeeded): ${(err as Error).message}`);

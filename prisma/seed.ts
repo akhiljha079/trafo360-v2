@@ -351,7 +351,8 @@ async function main() {
       subject: "New project {{projectNo}} — please send your documents",
       body: `<p>A new project has been created and needs your department's documents.</p>
 <p>Project: {{projectNo}} — {{projectName}}<br/>Customer: {{customerName}}</p>
-<p>Please send the relevant documents to <strong>{{documentCoordinatorName}}</strong> as soon as they're ready.</p>`,
+<p>Documents required from your department: <strong>{{documentList}}</strong></p>
+<p>Please send these to <strong>{{documentCoordinatorName}}</strong> as soon as they're ready.</p>`,
     },
   ];
   for (const t of NOTIFICATION_TEMPLATES) {
